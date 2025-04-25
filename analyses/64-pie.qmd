@@ -1,0 +1,299 @@
+---
+title: "64-pie"
+title-block-banner: true
+author:
+  - name: Shujie Tian
+date: 2025-04-28
+toc: true
+toc-depth: 4
+number-sections: true
+code-fold: true
+code-line-numbers: true
+code-tools: true
+format: 
+  html:
+    embed-resources: true
+    smooth-scroll: true
+    page-layout: full
+reference-location: section
+citation-location: document
+params:
+  name: "64-pie"
+---
+
+**Updated: `r format(Sys.time(), '%Y-%m-%d %H:%M:%S', tz = 'CET')` CET.**
+
+The purpose of this document is ...
+
+```{r setup}
+#| message: false
+#| include: false
+#| warning: false
+wd <- "analyses"
+if (basename(getwd()) != wd) {
+  setwd(here::here(wd))
+}
+params <- list(name = "64-pie")
+here::i_am(paste0(params$name, ".qmd"), uuid = "321cccc7-ebbc-4667-bc5e-8038a5eed756")
+projthis::proj_create_dir_target(params$name, clean = FALSE)
+path_target <- projthis::proj_path_target(params$name)
+path_source <- projthis::proj_path_source(params$name)
+path_raw <- path_source("00-raw")
+path_resource <- here::here(path_raw, "d00-resource")
+path_data <- here::here(path_raw, paste0("d", params$name))
+dir.create(path_raw, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_data, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_resource, recursive = TRUE, showWarnings = FALSE)
+```
+
+```{r packages}
+#| message: false
+#| warning: false
+suppressPackageStartupMessages({
+  library(here)
+  library(conflicted)
+  library(tidyverse)
+  library(data.table)
+  library(RColorBrewer)
+  library(ggrepel)
+  devtools::load_all()
+})
+```
+
+## Tasks
+
+The first task is ...
+
+
+```{r }
+eggnog <- data.table::fread(here(path_data, "protein_annotation_eggnog.tsv"), header=FALSE) %>% 
+  data.table::setnames(c("lcos_tag","seed_ortholog","evalue","score","eggnog_COGs","max_annot_|v|","COG_category","Description",
+                   "preferred_name","GOs","EC","KEGG_ko","KEGG_Pathway","KEGG_Module","KEGG-Reaction","KEGG_rcclass","BRITE"
+                                 ,"KEGG-TC","CAZy","BIGG_Reaction","PFAMs","contig","bin"))
+
+# Remove rows with empty values
+eggnog_ko <- eggnog %>% dplyr::filter(!str_trim(KEGG_ko) == "")
+# Split colon-separated elements and count elements in each cell
+eggnog_ko_split <- eggnog_ko %>%
+ mutate(split_elements = str_split(KEGG_ko, ",", simplify = TRUE)) %>%
+  rowwise() %>%
+ mutate(element_count = sum(!is.na(split_elements))) %>%
+ ungroup()
+# Count number of unique element types
+unique_elements <- unique(unlist(eggnog_ko_split$split_elements))
+unique_count <- length(unique_elements)
+# Output results
+cat("Non-empty rows:", nrow(eggnog_ko_split), "\n") #1457822
+cat("Non-empty rows:", nrow(eggnog_ko), "\n") #1457822
+cat("Number of unique element types:", unique_count, "\n") #91124
+
+
+# Filter empty rows
+non_empty_rows <- sum(nzchar(eggnog$KEGG_Pathway))
+# Split elements and expand into a vector
+elements <- unlist(strsplit(eggnog$KEGG_Pathway, ",\\s*"))
+# Count number of elements starting with "ko"
+ko_elements <- grep("^ko", elements, value = TRUE)
+ko_count <- length(ko_elements)
+# Count unique elements starting with "ko"
+unique_ko_elements <- unique(ko_elements)
+unique_ko_count <- length(unique_ko_elements)
+unique_count <- length(unique_elements)
+# Output results
+cat("Non-empty rows:", non_empty_rows, "\n") #840801 
+cat("Number of elements starting with 'ko':", ko_count, "\n") #2727865 
+cat("Number of unique elements starting with 'ko':", unique_ko_count, "\n") #407 
+
+# Count non-empty cells
+non_empty_egg <- sum(nzchar(eggnog$eggnog_COGs))
+# Extract unique values
+unique_egg <- unique(eggnog$eggnog_COGs)
+# Count number of unique elements
+num_unique_egg <- length(unique_egg)
+# Output results
+cat("Number of non-empty cells:", non_empty_egg, "\n") #2752326 
+cat("Number of unique elements:", num_unique_egg, "\n") #178312
+# Count non-empty cells
+non_empty_CAZy <- sum(nzchar(eggnog$CAZy))
+# Output results
+cat("Number of non-empty cells:", non_empty_CAZy, "\n") #45301
+```
+
+### CAZy
+
+```{r CAZy}
+# Count non-empty cells
+non_empty_CAZy <- sum(nzchar(eggnog$CAZy))
+# Output results
+cat("Non-empty rows:", non_empty_CAZy, "\n")
+#45301/2752326=1.65
+CAZy <- data.frame(
+  Component = c("CAZy", "Others"),
+  Proportion = c(1.65, 98.35)  
+)
+
+p1 <- ggplot(CAZy, aes(x = "", y = Proportion, fill = Component)) +
+  geom_bar(stat = "identity", width = 1) + 
+  coord_polar("y", start = 0) +  
+  theme_void() +  
+  geom_text(aes(label = paste(Component, "\n", round(Proportion, 2), "%")), 
+            position = position_stack(vjust = 0.5), 
+            color = "black", 
+            size = 13,          
+            fontface = "bold") +  
+  theme(legend.position = "none")  
+p1
+ggsave(path_target("CAZy_others.png"),plot = p1,width = 6,height = 6)
+ggsave(path_target("CAZy_others.pdf"),plot = p1,width = 6,height = 6)
+```
+
+### CAZy category
+
+```{r cazy category}
+# Convert table to data.frame
+cazy_df <- as.data.frame(table(eggnog$CAZy), stringsAsFactors = FALSE)
+names(cazy_df) <- c("CAZy_Class", "Count")
+
+# Define target categories
+categories <- c("AA", "CBM", "CE", "GH", "GT", "PL")
+
+# Initialize count results
+counts <- setNames(rep(0, length(categories)), categories)
+
+# Prefix extraction function
+extract_prefix <- function(x) {
+  regmatches(x, regexpr("^[A-Za-z]+", trimws(x)))
+}
+
+# Iterate and count
+for (i in 1:nrow(cazy_df)) {
+  combo <- cazy_df$CAZy_Class[i]
+  combo_count <- cazy_df$Count[i]
+  
+  # Split and extract prefixes
+  elements <- strsplit(combo, ",")[[1]]
+  prefixes <- sapply(elements, extract_prefix)
+  
+  # Match target categories after deduplication
+  matched_prefixes <- unique(prefixes[prefixes %in% categories])
+  
+ # Accumulate counts
+  for (prefix in matched_prefixes) {
+    counts[prefix] <- counts[prefix] + combo_count
+  }
+}
+
+#  Output results
+stats_df <- data.frame(
+  Category = names(counts),
+  Component = as.numeric(counts),
+  row.names = NULL,
+  stringsAsFactors = FALSE
+)
+print(stats_df)
+stats_df$Proportion <- (stats_df$Component / sum(stats_df$Component))*100
+
+head(stats_df)
+
+#	AA	21	0.04386148	
+#	CBM	2019	4.21696813	
+#	CE	847	1.76907974	
+#	GH	28755	60.05889970	
+#	GT	15515	32.40528009	
+#	PL	721	1.50591086	
+
+p2 <- ggplot(stats_df, aes(x = "", y = Proportion, fill = Category)) +
+  geom_bar(stat = "identity", width = 1) + 
+  coord_polar("y", start = 0) +  
+  theme_void() +  
+  geom_text_repel(aes(label = ifelse(Component %in% c(), "", paste0(round(Proportion, 2), "%"))), 
+                  position = position_stack(vjust = 0.5), 
+                  color = "black", 
+                  size = 9,  
+                  fontface = "bold") +  
+  scale_fill_brewer(palette = "Set1") +  
+  theme(legend.title = element_blank(),
+        legend.text = element_text(size = 24)) 
+
+ggsave(path_target("CAZy_category.png"),plot = p2,width = 6,height = 6)
+ggsave(path_target("CAZy_category.pdf"),plot = p2,width = 6,height = 6)
+```
+
+### kegg
+
+```{r kegg}
+eggnog_ko <- eggnog %>% dplyr::filter(!str_trim(KEGG_ko) == "")
+cat("Non-empty rows:", nrow(eggnog_ko), "\n")
+#1457822/2752326=52.97
+kegg <- data.frame(
+  Component = c("KEGG", "Others"),
+  Proportion = c(52.97, 47.03)  
+)
+p3 <- ggplot(kegg, aes(x = "", y = Proportion, fill = Component)) +
+  geom_bar(stat = "identity", width = 1) +  
+  coord_polar("y", start = 0) +  
+  theme_void() + 
+  geom_text(aes(label = paste(Component, "\n", round(Proportion, 2), "%")), 
+            position = position_stack(vjust = 0.5), 
+            color = "black", 
+            size = 13,          
+            fontface = "bold") +  
+  theme(legend.position = "none")  
+p3
+ggsave(path_target("kegg_others.png"),plot = p3,width = 6,height = 6)
+ggsave(path_target("kegg_others.pdf"),plot = p3,width = 6,height = 6)
+```
+
+*TODO: 缺一个 tax943.csv 文件*
+
+### eggnog category
+
+```{r eggnog category}
+tax943 <- read.csv(here(path_data, "tax943.csv"),header = T,row.names = 1)
+ko_bin <- eggnog_ko[,c("KEGG_ko","bin")]
+ko_bin_blank <- ko_bin %>% dplyr::filter(bin!="")
+ko <- c("KEGG_ko")
+ko_bin_blank_split <- tidyr::separate_rows(ko_bin_blank,all_of(ko),sep=",")
+ko_bin_blank_split$KEGG_ko <- gsub("^ko:","",ko_bin_blank_split$KEGG_ko)
+ko_bin_filter <- ko_bin_blank_split[ko_bin_blank_split$bin %in% row.names(tax943),]
+
+ko2pathway <- read.csv(here(path_data, "ko2pathway.tsv"),header = T,sep = "\t")
+ko_bin_filter_path <- ko_bin_filter %>% dplyr::left_join(ko2pathway, by = c("KEGG_ko" = "koid"),relationship ="many-to-many") %>% mutate(category = ifelse(is.na(A), "others", A))
+
+
+ko_bin_filter_path <- ko_bin_filter_path[!grepl("09180 Brite Hierarchies", ko_bin_filter_path$category), ]
+ko_bin_filter_path$category[ko_bin_filter_path$category == "09190 Not Included in Pathway or Brite"] <- "others"
+
+
+#unique_elements_count <- table(ko_bin_filter_path$category)
+unique_elements_count <- as.data.frame(table(ko_bin_filter_path$category), stringsAsFactors = FALSE)
+names(unique_elements_count) <- c("Component", "Count")
+unique_elements_count$Proportion <- unique_elements_count$Count/sum(unique_elements_count$Count) *100
+
+p4 <- ggplot(unique_elements_count, aes(x = "", y = Proportion, fill = Component)) +
+  geom_bar(stat = "identity", width = 1) +  
+  coord_polar("y", start = 0) + 
+  theme_void() + 
+  geom_text_repel(aes(label = ifelse(Proportion > 2, paste0(round(Proportion, 2), "%"), "")), 
+                  position = position_stack(vjust = 0.5), 
+                  color = "black", 
+                  size = 8,  
+                  fontface = "bold", 
+                  max.overlaps = Inf) +  
+  scale_fill_brewer(palette = "Set1") + 
+  theme(
+    legend.title = element_blank(), 
+    legend.text = element_text(size = 21.5, face = "bold")  
+  )
+p4
+ggsave(path_target("kegg_category.png"),plot = p4,width = 10,height = 6)
+ggsave(path_target("kegg_category.pdf"),plot = p4,width = 10,height = 6)
+```
+
+## Files written
+
+These files have been written to the target directory, `r paste0("data/", params$name)`:
+
+```{r list-files-target}
+projthis::proj_dir_info(path_target(), tz = "CET")
+```

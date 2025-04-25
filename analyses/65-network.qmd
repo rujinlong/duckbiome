@@ -1,0 +1,304 @@
+---
+title: "65-network"
+title-block-banner: true
+author:
+  - name: Shujie Tian
+date: 2025-04-28
+toc: true
+toc-depth: 4
+number-sections: true
+code-fold: true
+code-line-numbers: true
+code-tools: true
+format: 
+  html:
+    embed-resources: true
+    smooth-scroll: true
+    page-layout: full
+reference-location: section
+citation-location: document
+params:
+  name: "65-network"
+---
+
+**Updated: `r format(Sys.time(), '%Y-%m-%d %H:%M:%S', tz = 'CET')` CET.**
+
+The purpose of this document is ...
+
+```{r setup}
+#| message: false
+#| include: false
+#| warning: false
+wd <- "analyses"
+if (basename(getwd()) != wd) {
+  setwd(here::here(wd))
+}
+params <- list(name = "65-network")
+here::i_am(paste0(params$name, ".qmd"), uuid = "d09d4594-d97a-470d-be32-cb190b838445")
+projthis::proj_create_dir_target(params$name, clean = FALSE)
+path_target <- projthis::proj_path_target(params$name)
+path_source <- projthis::proj_path_source(params$name)
+path_raw <- path_source("00-raw")
+path_resource <- here::here(path_raw, "d00-resource")
+path_data <- here::here(path_raw, paste0("d", params$name))
+dir.create(path_raw, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_data, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_resource, recursive = TRUE, showWarnings = FALSE)
+```
+
+```{r packages}
+#| message: false
+#| warning: false
+suppressPackageStartupMessages({
+  library(here)
+  library(conflicted)
+  library(tidyverse)
+  library(data.table)
+  library(phyloseq)
+  library(NetCoMi)
+  library(igraph)
+  devtools::load_all()
+})
+
+```
+
+## Tasks
+
+The first task is ...
+
+```{r }
+# Load and prepare data
+S_g_C <- read.table(here(path_data, "16S_g_C.txt"), header = TRUE, row.names = 1)
+S_g_C <- t(S_g_C)
+S_g_C <- as.data.frame(S_g_C)
+
+# Process CF group data
+CF <- S_g_C %>% dplyr::select(starts_with("CF"))
+# Count zero elements per row
+n0 <- apply(CF == 0, 1, sum)
+# Identify rows with >74 zeros
+i0 <- which(n0 > 74)
+# Remove rows with >74 zeros
+CF74 <- CF[-i0, ]
+# Replace remaining zeros with small value (0.000000001)
+CF00 <- CF74 %>% mutate_all(~ifelse(.==0, 0.000000001, .))
+# Save processed data
+write.csv(CF00, path_target("CF7400.csv"))
+write.table(CF00, path_target("CF7400.txt"), sep = "\t")
+
+# Process ZF group data
+ZF <- S_g_C %>% dplyr::select(starts_with("ZF"))
+# Count zero elements per row
+n0 <- apply(ZF == 0, 1, sum)
+# Identify rows with >67 zeros
+i0 <- which(n0 > 67)
+# Remove rows with >67 zeros
+ZF67 <- ZF[-i0, ]
+# Replace remaining zeros with small value (0.000000001)
+ZF00 <- ZF67 %>% mutate_all(~ifelse(.==0, 0.000000001, .))
+# Save processed data
+write.csv(ZF00, path_target("ZF6700.csv"))
+write.table(ZF00, path_target("ZF6700.txt"), sep = "\t")
+
+# The following steps are command line operations (commented out):
+
+# 1. Calculate correlation matrix
+# ~/sparcc/SparCC3/SparCC.py CF7400.txt -i 5 --cor_file=CF74cor_sparcc.out.txt > sparcc.log
+# ~/sparcc/SparCC3/SparCC.py ZF6700.txt -i 5 --cor_file=ZF00cor_sparcc.out.txt > sparcc.log
+
+# 2. Generate bootstrap distributions
+# ~/sparcc/SparCC3/MakeBootstraps.py CF7400.txt -n 100 -t bootstrap_#.txt -p CFpvals11.25/ >> sparcc.log
+# ~/sparcc/SparCC3/MakeBootstraps.py ZF6700.txt -n 100 -t bootstrap_#.txt -p ZF00pvals11.25/ >> sparcc.log
+
+# 3. Calculate pseudo p-values
+# First, process bootstrap samples to get correlation matrices
+# for n in {0..100}; do ~/sparcc/SparCC3/SparCC.py CFpvals11.25/bootstrap_${n}.txt -i 5 --cor_file=CFpvals11.25/bootstrap_cor_${n}.txt >> sparcc.log; done
+# for n in {0..100}; do ~/sparcc/SparCC3/SparCC.py ZF00pvals11.25/bootstrap_${n}.txt -i 5 --cor_file=ZF00pvals11.25/bootstrap_cor_${n}.txt >> sparcc.log; done
+
+# Then calculate pseudo p-values by comparing observed correlations with bootstrap correlations
+# ~/sparcc/SparCC3/PseudoPvals.py CF74cor_sparcc.out.txt CFpvals11.25/bootstrap_cor_#.txt 100 -o CFpvals11.25/pvals.two_sided.txt -
+# ~/sparcc/SparCC3/PseudoPvals.py ZF00cor_sparcc.out.txt ZF00pvals11.25/bootstrap_cor_#.txt 100 -o ZF00pvals11.25/ZF00pvals.two_sided.txt -
+```
+
+
+```{r }
+# 4. Merge correlation matrix and p-value matrix to obtain final network
+
+# Process CF group network
+# Observed correlation matrix
+cor_sparcc <- read.delim(here(path_data, "CF74cor_sparcc.out.txt"), row.names = 1, sep = '\t', check.names = FALSE)
+# Pseudo p-value matrix
+pvals <- read.delim(here(path_data, "CF74pvals.two_sided.txt"), row.names = 1, sep = '\t', check.names = FALSE)
+
+# Keep only correlations with |r|≥0.3 and p<0.05
+cor_sparcc[abs(cor_sparcc) < 0.3] <- 0
+pvals[pvals>=0.05] <- -1
+pvals[pvals<0.05 & pvals>=0] <- 1
+pvals[pvals==-1] <- 0
+
+# Filtered adjacency matrix
+adj <- as.matrix(cor_sparcc) * as.matrix(pvals)
+diag(adj) <- 0    # Set diagonal values (self-correlations) to 0
+write.table(data.frame(adj, check.names = FALSE), path_target('CF740.30.05.txt'), col.names = NA, sep = '\t', quote = FALSE)
+
+## Network format conversion
+# Input data - adjacency matrix
+neetwork_adj <- read.delim(path_target("CF740.30.05.txt"), row.names = 1, sep = '\t', check.names = FALSE)
+head(neetwork_adj)[1:6]    
+
+# Convert adjacency matrix to igraph adjacency list (weighted undirected network)
+
+g <- graph_from_adjacency_matrix(as.matrix(neetwork_adj), mode = 'max', weighted = TRUE, diag = FALSE)
+g    
+
+# In this conversion mode, edge weights represent SparCC correlations (can be negative)
+# Since edge weights are typically positive, take absolute values and store original correlations
+E(g)$sparcc <- E(g)$weight
+E(g)$weight <- abs(E(g)$weight)
+
+# Convert to other network formats:
+# 1. Convert back to adjacency matrix
+adj_matrix <- as.matrix(as_adjacency_matrix(g, attr = 'sparcc'))
+write.table(data.frame(adj_matrix, check.names = FALSE), path_target('CF74Fnetwork0.8.adj_matrix136.txt'), col.names = NA, sep = '\t', quote = FALSE)
+
+# 2. graphml format (can be opened in Gephi for visualization)
+write_graph(g, path_target('CF740.30.05.graphml'), format = 'graphml')
+
+# 3. gml format (can be opened in Cytoscape for visualization)
+write_graph(g, path_target('CF74000.30.05.gml'), format = 'gml')
+
+
+# Process ZF group network (same steps as above)
+# Observed correlation matrix
+cor_sparcc <- read.delim(here(path_data, "ZF00cor_sparcc.out.txt"), row.names = 1, sep = '\t', check.names = FALSE)
+# Pseudo p-value matrix
+pvals <- read.delim(here(path_data, "ZF00pvals.two_sided.txt"), row.names = 1, sep = '\t', check.names = FALSE)
+
+# Keep only correlations with |r|≥0.3 and p<0.05
+cor_sparcc[abs(cor_sparcc) < 0.3] <- 0
+pvals[pvals>=0.05] <- -1
+pvals[pvals<0.05 & pvals>=0] <- 1
+pvals[pvals==-1] <- 0
+
+# Filtered adjacency matrix
+adj <- as.matrix(cor_sparcc) * as.matrix(pvals)
+diag(adj) <- 0    # Set diagonal values (self-correlations) to 0
+write.table(data.frame(adj, check.names = FALSE), path_target('ZF000.30.05.txt'), col.names = NA, sep = '\t', quote = FALSE)
+
+## Network format conversion
+# Input data - adjacency matrix
+neetwork_adj <- read.delim(path_target("ZF000.30.05.txt"), row.names = 1, sep = '\t', check.names = FALSE)
+head(neetwork_adj)[1:6]    
+
+# Convert adjacency matrix to igraph adjacency list (weighted undirected network)
+g <- graph_from_adjacency_matrix(as.matrix(neetwork_adj), mode = 'max', weighted = TRUE, diag = FALSE)
+g    
+
+# Store original correlations and use absolute values for weights
+E(g)$sparcc <- E(g)$weight
+E(g)$weight <- abs(E(g)$weight)
+
+# Convert to other network formats:
+# 1. graphml format (Gephi compatible)
+write_graph(g, path_target('ZF67000.30.05.graphml'), format = 'graphml')
+
+# 2. gml format (Cytoscape compatible)
+write_graph(g, path_target('ZF67000.30.05.gml'), format = 'gml')
+```
+
+```{r }
+# ======================================
+# MICROBIAL CO-OCCURRENCE NETWORK ANALYSIS
+
+# DATA PREPARATION
+# ------------------------------
+
+# Subset to common taxa between CF and ZF groups
+otu_CF74 <- CF74
+otu_ZF67 <- ZF67
+common_taxa <- base::intersect(row.names(otu_CF74), row.names(otu_ZF67))
+
+# Create filtered OTU tables
+otu_CF126 <- otu_CF74[common_taxa, ]
+otu_ZF126 <- otu_ZF67[common_taxa, ]
+
+# Transpose and convert to phyloseq objects
+totu_CF126 <- t(otu_CF126)
+totu_ZF126 <- t(otu_ZF126)
+totu_CF126 <- otu_table(totu_CF126, taxa_are_rows = TRUE)
+totu_ZF126 <- otu_table(totu_ZF126, taxa_are_rows = TRUE)
+
+# Create phyloseq objects
+amgut_season_no <- phyloseq(otu_table = totu_CF126)  # CF group
+amgut_season_yes <- phyloseq(otu_table = totu_ZF126) # ZF group
+n_yes <- phyloseq::nsamples(amgut_season_yes)
+
+# ------------------------------
+# NETWORK CONSTRUCTION
+# ------------------------------
+
+net_season <- netConstruct(
+  data = amgut_season_no,      # CF group data
+  data2 = amgut_season_yes,    # ZF group data
+  filtTax = "highestVar",      # Filter: keep 30 most variable taxa
+  filtTaxPar = list(highestVar = 30),
+  filtSamp = "highestFreq",    # Filter samples by frequency
+  filtSampPar = list(highestFreq = n_yes),
+  measure = "sparcc",         
+  normMethod = "clr",          
+  zeroMethod = "none",         
+  sparsMethod = "threshold",   
+  thresh = 0.3,               
+  dissFunc = "signed",         
+  verbose = 2,                 
+  seed = 123456              
+)
+
+# ------------------------------
+# NETWORK ANALYSIS
+# ------------------------------
+
+props_season <- netAnalyze(
+  net_season,
+  centrLCC = FALSE,            
+  avDissIgnoreInf = TRUE,     
+  sPathNorm = FALSE,           
+  clustMethod = "cluster_fast_greedy",
+  hubPar = c("degree", "eigenvector"), # Hub definition parameters
+  hubQuant = 0.9,              # Quantile for hub definition
+  lnormFit = TRUE,           
+  normDeg = FALSE,             
+  normBetw = FALSE,            
+  normClose = FALSE,       
+  normEigen = FALSE          
+)
+
+# View network summary
+summary(props_season)
+
+# ------------------------------
+# NETWORK COMPARISON
+# ------------------------------
+
+comp_season <- netCompare(
+  props_season,
+  permTest = FALSE,            
+  verbose = FALSE,             
+  seed = 123456               
+)
+
+# View comparison results
+summary(comp_season,
+        groupNames = c("CF", "ZF"),
+        showCentr = c("degree", "between", "closeness"), 
+        numbNodes = 5)         
+```
+
+
+## Files written
+
+These files have been written to the target directory, `r paste0("data/", params$name)`:
+
+```{r list-files-target}
+projthis::proj_dir_info(path_target(), tz = "CET")
+```

@@ -8,3 +8,8 @@ inst/doc
 /doc/
 /Meta/
 analyses/data
+analyses/*.sqlite
+tian/data
+tian
+
+/.quarto/

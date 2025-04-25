@@ -1,0 +1,143 @@
+---
+title: "11-tse"
+title-block-banner: true
+author:
+  - name: Jinlong Ru
+    orcid: 0000-0002-6757-6018
+date: 2025-05-25
+toc: true
+toc-depth: 4
+number-sections: true
+code-fold: true
+code-line-numbers: true
+code-tools: true
+format: 
+  html:
+    embed-resources: true
+    smooth-scroll: true
+    page-layout: full
+reference-location: section
+citation-location: document
+params:
+  name: "11-tse"
+---
+
+**Updated: `r format(Sys.time(), '%Y-%m-%d %H:%M:%S', tz = 'CET')` CET.**
+
+The purpose of this document is ...
+
+```{r setup}
+#| message: false
+#| include: false
+#| warning: false
+wd <- "analyses"
+if (basename(getwd()) != wd) {
+  setwd(here::here(wd))
+}
+params <- list(name = "11-tse")
+here::i_am(paste0(params$name, ".qmd"), uuid = "22d21880-3ec8-41c3-8bcb-f71956158f24")
+projthis::proj_create_dir_target(params$name, clean = FALSE)
+path_target <- projthis::proj_path_target(params$name)
+path_source <- projthis::proj_path_source(params$name)
+path_raw <- path_source("00-raw")
+path_resource <- here::here(path_raw, "d00-resource")
+path_data <- here::here(path_raw, paste0("d", params$name))
+dir.create(path_raw, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_data, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_resource, recursive = TRUE, showWarnings = FALSE)
+```
+
+```{r packages}
+#| message: false
+suppressPackageStartupMessages({
+  library(here)
+  library(conflicted)
+  library(tidyverse)
+  library(data.table)
+  library(TreeSummarizedExperiment)
+  library(ANCOMBC)
+  library(scater)  # for aggregateAcrossFeatures
+  devtools::load_all()
+})
+
+con <- load_db()
+```
+
+## Tasks
+
+The first task is ...
+
+
+### Create TSE for MAGs
+
+```{r tse}
+mat_metadata <- DBI::dbGetQuery(con, "SELECT * from sample_metadata") %>% 
+  tibble::column_to_rownames("sample_id") %>%
+  as.matrix()
+
+mat_rowdata <- DBI::dbGetQuery(con, "SELECT * from anno_MAG_gtdb") %>% 
+  dplyr::mutate(
+      # Split classification string into taxonomy levels
+      tax_split = strsplit(classification, ";"),
+      # Extract each level
+      domain = sapply(tax_split, function(x) sub("d__", "", x[1])),
+      phylum = sapply(tax_split, function(x) sub("p__", "", x[2])),
+      class = sapply(tax_split, function(x) sub("c__", "", x[3])),
+      order = sapply(tax_split, function(x) sub("o__", "", x[4])),
+      family = sapply(tax_split, function(x) sub("f__", "", x[5])),
+      genus = sapply(tax_split, function(x) sub("g__", "", x[6])),
+      species = sapply(tax_split, function(x) sub("s__", "", x[7]))
+    ) %>%
+    # Select relevant columns
+    dplyr::select(
+      bin,  # This should match your row names in mat_count
+      domain, phylum, class, order, family, genus, species
+    ) %>%
+    # Add coined taxonomy name to those NAs in tax_info, based on the following rules:
+    # 1. if phylum is NA, use domain name with "novel phylum" suffix;
+    # 2. if class is NA, use phylum name with "novel class" suffix;
+    # 3. if order is NA, use class name with "novel order" suffix;
+    # 4. if family is NA, use order name with "novel family" suffix;
+    # 5. if genus is NA, use family name with "novel genus" suffix;
+    # 6. if species is NA, use genus name with "novel species" suffix;
+    # first, replace all cell equal to "" with NA
+    dplyr::mutate(across(everything(), ~ifelse(. == "", NA, .))) %>%
+    # then, add coined taxonomy name
+    dplyr::mutate(phylum = ifelse(is.na(phylum), paste0(domain, "__naP"), phylum),
+                  class = ifelse(is.na(class), paste0(phylum, "__naC"), class),
+                  order = ifelse(is.na(order), paste0(class, "__naO"), order),
+                  family = ifelse(is.na(family), paste0(order, "__naF"), family),
+                  genus = ifelse(is.na(genus), paste0(family, "__naG"), genus),
+                  species = ifelse(is.na(species), paste0(genus, "__naS"), species)) %>%
+    # if "__" in the taxonomy name, add the "user_genome" column to the taxonomy name
+    dplyr::mutate(across(everything(), ~ifelse(grepl("__", .), paste0(., "__", bin), .))) %>%
+    tibble::column_to_rownames("bin") %>%
+    as.matrix()
+
+mat_count <- read_coverm_mag(here(path_data, "abundance_genomes_count.tsv"))
+mat_tmm <- read_coverm_mag(here(path_data, "abundance_genomes_trimmed_mean.tsv"))
+mat_rpkm <- read_coverm_mag(here(path_data, "abundance_genomes_rpkm.tsv"))
+mat_tpm <- read_coverm_mag(here(path_data, "abundance_genomes_tpm.tsv"))
+mat_covfrac <- read_coverm_mag(here(path_data, "abundance_genomes_covered_fraction.tsv"))
+
+# Create TSE with taxonomy
+tse <- TreeSummarizedExperiment(
+    assays = list(counts = mat_count[, rownames(mat_metadata)],
+                  rpkm = mat_rpkm[, rownames(mat_metadata)],
+                  tpm = mat_tpm[, rownames(mat_metadata)],
+                  covfrac = mat_covfrac[, rownames(mat_metadata)],
+                  tmm = mat_tmm[, rownames(mat_metadata)]),  # ensure the order of samples in df_count is the same as in metadata
+    colData = mat_metadata,
+    rowData = mat_rowdata[rownames(mat_count), ]  # ensure the order of features in df_taxa is the same as in mat_count
+)
+
+saveRDS(tse, file = path_target("tse_MAG.rds"))
+```
+
+## Files written
+
+These files have been written to the target directory, `r paste0("data/", params$name)`:
+
+```{r list-files-target}
+projthis::proj_dir_info(path_target(), tz = "CET")
+```

@@ -1,0 +1,605 @@
+---
+title: "67-metabolite_spearman"
+title-block-banner: true
+author:
+  - name: Shujie Tian
+date: 2025-04-28
+toc: true
+toc-depth: 4
+number-sections: true
+code-fold: true
+code-line-numbers: true
+code-tools: true
+format: 
+  html:
+    embed-resources: true
+    smooth-scroll: true
+    page-layout: full
+reference-location: section
+citation-location: document
+params:
+  name: "67-metabolite_spearman"
+---
+
+**Updated: `r format(Sys.time(), '%Y-%m-%d %H:%M:%S', tz = 'CET')` CET.**
+
+The purpose of this document is ...
+
+```{r setup}
+#| message: false
+#| include: false
+#| warning: false
+wd <- "analyses"
+if (basename(getwd()) != wd) {
+  setwd(here::here(wd))
+}
+params <- list(name = "67-metabolite_spearman")
+here::i_am(paste0(params$name, ".qmd"), uuid = "bb3547d9-67c2-4cae-a575-6c27012330ea")
+projthis::proj_create_dir_target(params$name, clean = FALSE)
+path_target <- projthis::proj_path_target(params$name)
+path_source <- projthis::proj_path_source(params$name)
+path_raw <- path_source("00-raw")
+path_resource <- here::here(path_raw, "d00-resource")
+path_data <- here::here(path_raw, paste0("d", params$name))
+dir.create(path_raw, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_data, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_resource, recursive = TRUE, showWarnings = FALSE)
+```
+
+```{r packages}
+#| message: false
+#| warning: false
+suppressPackageStartupMessages({
+  library(here)
+  library(conflicted)
+  library(tidyverse)
+  library(data.table)
+  library(Hmisc)
+  library(pheatmap)
+  library(ggsignif)
+  devtools::load_all()
+})
+```
+
+## Tasks
+
+The first task is ...
+
+
+
+```{r }
+unique_metasbolit <- read.csv(path_source("66-metabolite","data_normalized221_metabolites32_name_t_group_final_t.csv"))
+
+a37 <- openxlsx::read.xlsx(here(path_data, "37.xlsx"))
+unique_bacteria <- read.csv(here(path_raw, "d61-spearman/unique.csv"))
+
+# Process the data
+a37 <- a37 %>%
+  mutate(
+    X = paste0("A", sample_id),
+    
+    # Remove all "-" from the third column
+    col3 = str_remove_all(wing_no, "-")
+  )
+
+# Iterate through col1 column of df1
+for (i in 1:nrow(a37)) {
+  old_col_name <- a37$col3[i]  # Get value from col1 in df1
+  new_col_name <- a37$X[i]     # Get value from X column as new column name
+  if (old_col_name %in% names(unique_bacteria)) {  # Check if it's a column name in df2
+    names(unique_bacteria)[names(unique_bacteria) == old_col_name] <- new_col_name  # Modify column name
+  }
+}
+
+# Extract common column names between the two tables (excluding first column of df1)
+common_columns <- dplyr::intersect(names(unique_bacteria)[-1], names(unique_metasbolit))
+print(common_columns)
+#A352 
+
+# Keep first column of df1 and common columns
+unique_bacteria32 <- unique_bacteria[c("sample_no", common_columns)]
+
+unique_metasbolit <- unique_metasbolit[c("X", common_columns)]
+
+# Transpose unique_metasbolit
+meta437 <- unique_metasbolit$X
+unique_metasbolit_t <- as.data.frame(t(unique_metasbolit))
+unique_metasbolit_t <- unique_metasbolit_t[-1,]
+names(unique_metasbolit_t) <- meta437
+
+# Transpose unique_bacteria32
+bac21 <- unique_bacteria32$sample_no
+unique_bacteria32_t <- as.data.frame(t(unique_bacteria32))
+unique_bacteria32_t <- unique_bacteria32_t[-1,]
+names(unique_bacteria32_t) <- bac21
+
+# Match row order between the two transposed data frames
+unique_metasbolit_t <- unique_metasbolit_t[match(row.names(unique_bacteria32_t), row.names(unique_metasbolit_t)),]
+```
+
+
+
+#metasbolit_fcr all
+```{r }
+# Load and prepare character data
+character_new <- read.csv(here(path_raw, "d61-spearman/character.csv"), header = T, row.names = 1)
+character_t <- t(character_new)
+character_t <- as.data.frame(character_t[c("FCR","ADG"),])
+
+# Rename columns based on a37 mapping
+for (i in 1:nrow(a37)) {
+  old_col_name <- a37$col3[i]   
+  new_col_name <- a37$X[i]  
+  if (old_col_name %in% names(character_t)) {  
+    names(character_t)[names(character_t) == old_col_name] <- new_col_name  # Modify column names
+  }
+}
+
+# Find common columns between datasets
+common_columns <- dplyr::intersect(names(character_t), row.names(unique_metasbolit_t))
+print(common_columns)
+
+# Filter and transpose character data to match metabolite data
+character_t31 <- character_t[,common_columns]
+character_t31 <- as.data.frame(t(character_t31))
+character_t31 <- character_t31[row.names(unique_metasbolit_t),]
+
+# 1. Merge data frames
+metasbolits_bacteria <- cbind(unique_metasbolit_t, character_t31)
+
+# Calculate correlations and significance
+spearman_results <- rcorr(as.matrix(metasbolits_bacteria), type = "spearman")
+spearman_corr <- spearman_results$r
+spearman_pval <- spearman_results$P
+
+# Filter correlation matrices to exclude character variables
+spearman_corr <- spearman_corr[-(1:221), -(222:223)]
+spearman_pval <- spearman_pval[-(1:221), -(222:223)]
+spearman_corr <- t(spearman_corr)
+spearman_pval <- t(spearman_pval)
+
+# Save correlation results
+write.table(spearman_corr, path_target("spcor_metasbolits_character.txt"), quote = F, row.names = T)
+write.table(spearman_pval, path_target("spp_metasbolits_character.txt"), quote = F, row.names = T)
+write.csv(spearman_corr, path_target("spcor_metasbolits_character.csv"), row.names = T)
+write.csv(spearman_pval, path_target("spp_metasbolits_character.csv"), row.names = T)
+
+# 2. Filter significant correlations (p < 0.05 & |r| > 0.3)
+sig_corr <- spearman_corr
+sig_corr[spearman_pval >= 0.05 | abs(spearman_corr) < 0.3] <- NA
+
+# 3. Create significance marker matrix
+sig_labels <- matrix("", nrow = nrow(spearman_pval), ncol = ncol(spearman_pval))
+sig_labels[spearman_pval < 0.05 & abs(spearman_corr) >= 0.3] <- "*"
+sig_labels[spearman_pval < 0.01 & abs(spearman_corr) >= 0.3] <- "**"
+sig_labels[spearman_pval < 0.001 & abs(spearman_corr) >= 0.3] <- "***"
+
+# 4. Filter rows and columns with at least one significant correlation
+keep_rows <- rowSums(!is.na(sig_corr)) > 0
+keep_cols <- colSums(!is.na(sig_corr)) > 0
+sig_corr_filtered <- sig_corr[keep_rows, keep_cols]
+sig_labels_filtered <- sig_labels[keep_rows, keep_cols]
+sig_labels_filtered <- as.matrix(sig_labels_filtered)
+filtered <- row.names(sig_corr_filtered)
+sig_corr_filtered_final <- spearman_corr[filtered,]
+sig_corr_filtered_final <- as.matrix(sig_corr_filtered_final)
+
+# Prepare filtered metabolite data
+unique_metasbolit39 <- unique_metasbolit[unique_metasbolit$X %in% row.names(sig_corr_filtered),]
+row.names(unique_metasbolit39) <- unique_metasbolit39$X
+unique_metasbolit39$X <- NULL
+write.csv(unique_metasbolit39, path_target("unique_metasbolit39.csv"))
+
+# Transpose and add group information
+unique_metasbolit39_t <- as.data.frame(t(unique_metasbolit39))
+unique_metasbolit39_t <- rownames_to_column(unique_metasbolit39_t, "Sample")
+
+group32 <- read.csv(here(path_raw, "d66-metabolite/group32.csv"))
+unique_metasbolit39_t_group <- merge(unique_metasbolit39_t, group32, by = "Sample", all.x = TRUE)
+
+# Reorder columns: move last column (Group) to second position
+unique_metasbolit39_t_group <- unique_metasbolit39_t_group %>%
+  dplyr::select(1, ncol(unique_metasbolit39_t_group), 2:(ncol(unique_metasbolit39_t_group) - 1))
+```
+
+
+
+# Get metabolite classification information
+```{r }
+metabolit221_full <-  read.csv(path_source("66-metabolite", "metabolit221_full.csv"))
+unique_metasbolit39_full <- metabolit221_full %>% dplyr::filter(name %in% row.names(unique_metasbolit39))
+```
+
+# Remove unimportant metabolites (FCR ADG)
+```{r }
+unique_metasbolit39_drug_no <- unique_metasbolit39_t[, !(names(unique_metasbolit39_t) %in% c("Piribedil","Prodigiosin","ZOLAZEPAM", "Clarithromycin", "Tezacitabine", "Difluorodeoxycytidine", "Metanephrine", "Chromoionophore I","2-(4-Hydroxy-1,3-thiazol-3-ium-3-yl)ethyl [2-(octadecylcarbamoyloxymethyl)oxolan-2-yl]methyl phosphate","1-[2,3-Dimethyl-2-(2-methylbut-3-en-2-yl)furan-3-yl]-3,5-dihydroxy-4-methoxyhexan-2-one"))]
+
+
+# Data preparation ------------------------------------------------------------
+row <- unique_metasbolit39_drug_no$Sample
+row.names(unique_metasbolit39_drug_no) <- row
+unique_metasbolit39_drug_no <- subset(unique_metasbolit39_drug_no, select = -Sample)
+metab_data <- unique_metasbolit39_drug_no
+microb_data <- character_t31
+metab_data <- metab_data[row.names(microb_data), ]
+unique_metasbolit28_full <- unique_metasbolit39_full[unique_metasbolit39_full$name %in% names(unique_metasbolit39_drug_no),]
+
+
+# Metabolite classification processing
+class <- unique_metasbolit28_full$super_class.HMDB.
+table(class)
+metab_class <- ifelse(
+  class %in% c(
+    "Benzenoids",
+    "Lipids and lipid-like molecules",
+    "Nucleosides, nucleotides, and analogues",
+    "Organic acids and derivatives",
+    "Organic oxygen compounds",
+    "Organoheterocyclic compounds",
+    "Phenylpropanoids and polyketides"
+  ),
+  class,
+  "Others"
+)
+
+# Calculate correlations ----------------------------------------------------------
+cor_res <- rcorr(as.matrix(metab_data), as.matrix(microb_data), type = "spearman")
+cor_matrix <- cor_res$r[1:37, 38:39]  # Metabolites × FCR ADG
+p_matrix <- cor_res$P[1:37, 38:39]
+
+# Filter criteria: |r| > 0.3 and p < 0.05
+significant_mask <- (abs(cor_matrix) > 0.3) & (p_matrix < 0.05)
+
+# Keep rows (metabolites) with at least one significant correlation
+keep_rows <- rowSums(significant_mask, na.rm = TRUE) > 0
+
+# Keep columns (bacterial species) with at least one significant correlation
+keep_cols <- colSums(significant_mask, na.rm = TRUE) > 0
+
+# Apply filtering
+cor_matrix_filtered <- cor_matrix[keep_rows, keep_cols, drop = FALSE]
+p_matrix_filtered <- p_matrix[keep_rows, keep_cols, drop = FALSE]
+metab_class_filtered <- metab_class[keep_rows]
+
+# Sort by classification
+class_order <- order(metab_class_filtered)
+cor_matrix_sorted <- cor_matrix_filtered[class_order, , drop = FALSE]
+p_matrix_sorted <- p_matrix_filtered[class_order, , drop = FALSE]
+
+# Create significance marker matrix
+sig_matrix <- matrix("", nrow = nrow(p_matrix_sorted), ncol = ncol(p_matrix_sorted))
+sig_matrix[p_matrix_sorted < 0.001] <- "***"
+sig_matrix[p_matrix_sorted >= 0.001 & p_matrix_sorted < 0.01] <- "**"
+sig_matrix[p_matrix_sorted >= 0.01 & p_matrix_sorted < 0.05] <- "*"
+sig_matrix_sorted <- sig_matrix[class_order, ]
+
+# Annotation and color settings -----------------------------------------------------
+annotation_row <- data.frame(Class = metab_class_filtered[class_order])
+row.names(annotation_row) <- row.names(cor_matrix_sorted)  
+
+class_colors <- RColorBrewer::brewer.pal(length(unique(metab_class_filtered)), "Set2")
+names(class_colors) <- unique(metab_class_filtered)
+anno_colors <- list(Class = class_colors)
+
+# Draw heatmap (metabolites in rows, bacterial species in columns) ------------------------------------
+p <- pheatmap::pheatmap(
+  cor_matrix_sorted,  
+  display_numbers = sig_matrix_sorted,
+  number_color = "black",
+  fontsize_number = 16,
+  cluster_rows = FALSE,  
+  cluster_cols = TRUE,   
+  annotation_row = annotation_row,
+  annotation_colors = anno_colors,
+  color = colorRampPalette(c("navy", "white", "firebrick3"))(100),
+  breaks = seq(-1, 1, length.out = 101),
+  main = "Significant Spearman Correlations(Metabolites vs FCR and ADG)\n(|r| ≥ 0.3,*: p<0.05, **: p<0.01, ***: p<0.001)",
+  fontsize_col = 16,     
+  fontsize_row = 16,    
+  fontsize = 16,
+  angle_col = 0,       
+  border_color = "gray60",
+  cellwidth = 200,       
+  cellheight = 25,       
+  treeheight_col = 0,   
+  show_rownames = TRUE,
+  show_colnames = TRUE
+)
+
+# Save figures ----------------------------------------------------------
+ggsave(
+  path_target("metabolite37_vs_tFCRADG_correlation.png"),
+  plot = p,
+  width = 24.5,  
+  height = 14, 
+  dpi = 600,
+  bg = "white"
+)
+ggsave(
+  path_target("metabolite37_vs_tFCRADG_correlation.pdf"),
+  plot = p,
+  width = 24.5,  
+  height = 14,
+  bg = "white"
+)
+```
+
+
+
+#Perform Spearman correlation between 37 metabolites significantly associated with FCR/ADG and differential bacteria (threshold r > 0.5)
+```{r }
+microb_data <- unique_bacteria32_t
+
+# Calculate correlations ----------------------------------------------------------
+cor_res <- rcorr(as.matrix(metab_data), as.matrix(microb_data), type = "spearman")
+cor_matrix <- cor_res$r[1:37, 38:58]  # Metabolites × Bacteria
+p_matrix <- cor_res$P[1:37, 38:58]
+
+# Filter criteria: |r| > 0.5 and p < 0.05
+significant_mask <- (abs(cor_matrix) > 0.5) & (p_matrix < 0.05)
+
+# Keep rows (metabolites) with at least one significant correlation
+keep_rows <- rowSums(significant_mask, na.rm = TRUE) > 0
+
+# Keep columns (bacteria) with at least one significant correlation
+keep_cols <- colSums(significant_mask, na.rm = TRUE) > 0
+
+# Apply filtering
+cor_matrix_filtered <- cor_matrix[keep_rows, keep_cols, drop = FALSE]
+p_matrix_filtered <- p_matrix[keep_rows, keep_cols, drop = FALSE]
+metab_class_filtered <- metab_class[keep_rows]
+
+# Sort by classification
+class_order <- order(metab_class_filtered)
+cor_matrix_sorted <- cor_matrix_filtered[class_order, , drop = FALSE]
+
+# Create significance marker matrix
+sig_matrix <- matrix("", nrow = nrow(p_matrix_filtered), ncol = ncol(p_matrix_filtered))
+sig_matrix[p_matrix_filtered < 0.001] <- "***"
+sig_matrix[p_matrix_filtered >= 0.001 & p_matrix_filtered < 0.01] <- "**"
+sig_matrix[p_matrix_filtered >= 0.01 & p_matrix_filtered < 0.05] <- "*"
+sig_matrix_sorted <- sig_matrix[class_order, ]
+
+# Transpose matrices
+cor_matrix_t <- as.data.frame(t(cor_matrix_sorted))
+sig_matrix_t <- as.data.frame(t(sig_matrix_sorted))
+
+# Annotation and color settings -----------------------------------------------------
+annotation_col <- data.frame(Class = metab_class_filtered[class_order])
+row.names(annotation_col) <- names(cor_matrix_t)
+
+class_colors <- RColorBrewer::brewer.pal(length(unique(metab_class_filtered)), "Set2")
+names(class_colors) <- unique(metab_class_filtered)
+anno_colors <- list(Class = class_colors)
+
+# Draw heatmap ----------------------------------------------------------
+p <- pheatmap::pheatmap(
+  cor_matrix_t,
+  display_numbers = sig_matrix_t,
+  number_color = "black",
+  fontsize_number = 8,
+  cluster_rows = TRUE,   
+  cluster_cols = FALSE,  
+  annotation_col = annotation_col,
+  annotation_colors = anno_colors,
+  color = colorRampPalette(c("navy", "white", "firebrick3"))(100),
+  breaks = seq(-1, 1, length.out = 101),
+  cutree_rows = 1,       
+  main = "",
+  fontsize_col = 10,     
+  fontsize_row = 10,     
+  fontsize = 12,         
+  angle_col = 315,       
+  border_color = "gray60", 
+  cellwidth = 15,        
+  cellheight = 15,      
+  treeheight_row = 0,   
+  treeheight_col = 0,    
+  show_rownames = TRUE,  
+  show_colnames = TRUE   
+)
+
+# Save figures ----------------------------------------------------------
+ggsave(
+  path_target("metabolite37_bacteria0.5_correlation_filtered.png"),
+  plot = p,
+  width = 13,
+  height = 9,
+  dpi = 600,
+  bg = "white"
+)
+ggsave(
+  path_target("metabolite37_bacteria0.5_correlation_filtered.pdf"),
+  plot = p,
+  width = 13,
+  height = 9,
+  bg = "white"
+)
+```
+
+
+# Perform Spearman correlation (threshold r > 0.5) between 37 metabolites significantly associated with FCR/ADG and differential VC
+
+```{r }
+unique_vc <- read.csv(here(path_data, "unique_vc.csv"), row.names = 1)
+microb_data <- t(unique_vc)
+
+# Calculate correlations ----------------------------------------------------------
+cor_res <- rcorr(as.matrix(metab_data), as.matrix(microb_data), type = "spearman")
+cor_matrix <- cor_res$r[1:37, 38:116]  # Metabolites × Differential VC
+p_matrix <- cor_res$P[1:37, 38:116]
+
+# Filter criteria: |r| > 0.5 and p < 0.05
+significant_mask <- (abs(cor_matrix) > 0.5) & (p_matrix < 0.05)
+
+# Keep rows with at least one significant correlation
+keep_rows <- rowSums(significant_mask, na.rm = TRUE) > 0
+
+# Keep columns with at least one significant correlation
+keep_cols <- colSums(significant_mask, na.rm = TRUE) > 0
+
+# Apply filtering
+cor_matrix_filtered <- cor_matrix[keep_rows, keep_cols, drop = FALSE]
+p_matrix_filtered <- p_matrix[keep_rows, keep_cols, drop = FALSE]
+metab_class_filtered <- metab_class[keep_rows]
+
+# Sort by classification
+class_order <- order(metab_class_filtered)
+cor_matrix_sorted <- cor_matrix_filtered[class_order, , drop = FALSE]
+
+# Create significance marker matrix
+sig_matrix <- matrix("", nrow = nrow(p_matrix_filtered), ncol = ncol(p_matrix_filtered))
+sig_matrix[p_matrix_filtered < 0.001] <- "***"
+sig_matrix[p_matrix_filtered >= 0.001 & p_matrix_filtered < 0.01] <- "**"
+sig_matrix[p_matrix_filtered >= 0.01 & p_matrix_filtered < 0.05] <- "*"
+sig_matrix_sorted <- sig_matrix[class_order, ]
+
+# Transpose matrices
+cor_matrix_t <- as.data.frame(t(cor_matrix_sorted))
+sig_matrix_t <- as.data.frame(t(sig_matrix_sorted))
+
+# Annotation and color settings -----------------------------------------------------
+annotation_col <- data.frame(Class = metab_class_filtered[class_order])
+rownames(annotation_col) <- names(cor_matrix_t)
+
+class_colors <- RColorBrewer::brewer.pal(length(unique(metab_class_filtered)), "Set2")
+names(class_colors) <- unique(metab_class_filtered)
+anno_colors <- list(Class = class_colors)
+
+# Draw heatmap ----------------------------------------------------------
+p <- pheatmap::pheatmap(
+  cor_matrix_t,
+  display_numbers = sig_matrix_t,
+  number_color = "black",
+  fontsize_number = 8,
+  cluster_rows = TRUE,   
+  cluster_cols = FALSE,  
+  annotation_col = annotation_col,
+  annotation_colors = anno_colors,
+  color = colorRampPalette(c("navy", "white", "firebrick3"))(100),
+  breaks = seq(-1, 1, length.out = 101),
+  cutree_rows = 1,      
+  main = "",
+  fontsize_col = 10,    
+  fontsize_row = 10,    
+  fontsize = 12,         
+  angle_col = 315,       
+  border_color = "gray60", 
+  cellwidth = 15,       
+  cellheight = 15,      
+  treeheight_row = 0,  
+  treeheight_col = 0     
+)
+
+# Save figures ----------------------------------------------------------
+ggsave(
+  path_target("metabolite37_vc0.5_correlation_filtered.png"),
+  plot = p,
+  width = 14,
+  height = 15,
+  dpi = 600,
+  bg = "white"
+)
+ggsave(
+  path_target("metabolite37_vc0.5_correlation_filtered.pdf"),
+  plot = p,
+  width = 14,
+  height = 15,
+  bg = "white"
+)
+```
+
+#ALDH5A1 / Succinic acid semialdehyde
+```{r }
+# Load rlog transformed data
+res6_rlog <- read.csv(path_source("60-import","res6_rlog.csv"), row.names = 1)
+
+# Prepare ALDH5A1 expression data
+d <- as.data.frame(t(res6_rlog["gene-ALDH5A1",]))
+d$Group <- c("ZF","ZF","ZF","CF","CF","CF")
+
+# Define unified plotting function
+plot_unified <- function(data, y_var, y_label) {
+  # Ensure Group is a factor with correct levels
+  data$Group <- factor(data$Group)
+  
+  # Calculate y-axis maximum for significance marker positioning
+  y_max <- max(data[[y_var]], na.rm = TRUE)
+  
+  ggplot(data, aes(x = Group, y = .data[[y_var]], fill = Group)) +
+    geom_boxplot(alpha = 0.5, 
+                 outlier.shape = 21, outlier.size = 2) +
+    # Significance testing
+    geom_signif(
+      comparisons = list(levels(data$Group)),  
+      map_signif_level = function(p) "**",    
+      y_position = y_max * 1.02,
+      tip_length = 0,
+      textsize = 18,
+      size = 1.3
+    ) +
+    scale_y_continuous(limits = c(NA, y_max * 1.04)) +
+    theme_bw() +
+    labs(x = "", y = y_label) +
+    theme(
+      axis.title = element_text(size = 21),
+      axis.text = element_text(size = 18),
+      legend.position = "none"
+    )
+}
+
+# Plot and save ALDH5A1 expression
+p_ALDH5A1 <- plot_unified(d, "gene-ALDH5A1", "Abundance of ALDH5A1 (rlog)")
+ggsave(p_ALDH5A1, filename = path_target("ALDH5A1.png"), width = 6, height = 6)
+ggsave(p_ALDH5A1, filename = path_target("ALDH5A1.pdf"), width = 6, height = 6)
+
+# Prepare Succinic acid semialdehyde data
+unique_metasbolit_t$Sample <- row.names(unique_metasbolit_t)
+unique_metasbolit_t_group_fi <- merge(unique_metasbolit_t, unique_metasbolit39_t_group, by = "Sample")
+Succinic_acid_semialdehyde <- unique_metasbolit_t_group_fi[, c("Succinic acid semialdehyde", "Group")]
+Succinic_acid_semialdehyde$`Succinic acid semialdehyde` <- as.numeric(Succinic_acid_semialdehyde$`Succinic acid semialdehyde`)
+
+# Update plotting function for Succinic acid semialdehyde
+plot_unified <- function(data, y_var, y_label) {
+  data$Group <- factor(data$Group)
+  
+  # Calculate y-axis maximum for significance marker positioning
+  y_max <- max(data[[y_var]], na.rm = TRUE)
+  
+  ggplot(data, aes(x = Group, y = .data[[y_var]], fill = Group)) +
+    # Boxplot
+    geom_boxplot(alpha = 0.5,
+                 outlier.shape = 21, outlier.size = 2) +
+    # Significance testing
+    geom_signif(
+      comparisons = list(levels(data$Group)),  
+      map_signif_level = function(p) "*",    
+      y_position = y_max * 1.01,
+      tip_length = 0,
+      textsize = 18,
+      size = 1.3
+    ) +
+    scale_y_continuous(limits = c(NA, y_max * 1.14)) +
+    theme_bw() +
+    labs(x = "", y = y_label) +
+    theme(
+      axis.title = element_text(size = 21),
+      axis.text = element_text(size = 18),
+      legend.position = "none"
+    )
+}
+
+# Plot and save Succinic acid semialdehyde levels
+p_Succinic <- plot_unified(Succinic_acid_semialdehyde, "Succinic acid semialdehyde", "Succinic acid semialdehyde(μg/mg)")
+ggsave(p_Succinic, filename = path_target("Succinic acid semialdehyde.png"), width = 6, height = 6)
+ggsave(p_Succinic, filename = path_target("Succinic acid semialdehyde.pdf"), width = 6, height = 6)
+```
+
+
+## Files written
+
+These files have been written to the target directory, `r paste0("data/", params$name)`:
+
+```{r list-files-target}
+projthis::proj_dir_info(path_target(), tz = "CET")
+```

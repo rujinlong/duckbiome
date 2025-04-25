@@ -1,0 +1,150 @@
+---
+title: "12-DAA"
+title-block-banner: true
+author:
+  - name: Jinlong Ru
+    orcid: 0000-0002-6757-6018
+date: 2025-04-25
+toc: true
+toc-depth: 4
+number-sections: true
+code-fold: true
+code-line-numbers: true
+code-tools: true
+format: 
+  html:
+    embed-resources: true
+    smooth-scroll: true
+    page-layout: full
+reference-location: section
+citation-location: document
+params:
+  name: "12-DAA"
+---
+
+**Updated: `r format(Sys.time(), '%Y-%m-%d %H:%M:%S', tz = 'CET')` CET.**
+
+The purpose of this document is ...
+
+```{r setup}
+#| message: false
+#| include: false
+#| warning: false
+wd <- "analyses"
+if (basename(getwd()) != wd) {
+  setwd(here::here(wd))
+}
+params <- list(name = "12-DAA")
+here::i_am(paste0(params$name, ".qmd"), uuid = "2a27e2b6-8e60-4e32-a3b0-b8f0bc63860f")
+projthis::proj_create_dir_target(params$name, clean = FALSE)
+path_target <- projthis::proj_path_target(params$name)
+path_source <- projthis::proj_path_source(params$name)
+path_raw <- path_source("00-raw")
+path_resource <- here::here(path_raw, "d00-resource")
+path_data <- here::here(path_raw, paste0("d", params$name))
+dir.create(path_raw, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_data, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_resource, recursive = TRUE, showWarnings = FALSE)
+```
+
+```{r packages}
+#| message: false
+suppressPackageStartupMessages({
+  library(here)
+  library(conflicted)
+  library(tidyverse)
+  library(data.table)
+  library(TreeSummarizedExperiment)
+  library(ANCOMBC)
+  library(mia)
+  devtools::load_all()
+})
+
+tse <- readRDS(path_source("11-tse", "tse_MAG.rds"))
+```
+
+## Tasks
+
+The first task is ...
+
+```{r ANCOMBC2}
+#| message: false
+#| warning: false
+tse_ancombc2 <- ancombc2(
+    data = tse,
+    assay_name = "tmm",    
+    tax_level = "species",     # specify the taxonomic level
+    fix_formula = "group",    
+    rand_formula = NULL,      
+    p_adj_method = "fdr",
+    prv_cut = 0.10,          
+    lib_cut = 1000,          
+    s0_perc = 0.05,          
+    group = "group",
+    struc_zero = TRUE,       
+    n_cl = 6,
+    global = FALSE,          
+    pairwise = FALSE,        
+    dunnet = FALSE,          
+    trend = FALSE,           
+    verbose = TRUE
+)
+
+
+# Analyze results
+res <- tse_ancombc2$res
+
+# Create summary table for phylum level
+res_summary <- res %>%
+  dplyr::select(taxon, 
+         lfc = lfc_groupZF,
+         se = se_groupZF,
+         p_val = p_groupZF,
+         q_val = q_groupZF,
+         diff_abundant = diff_groupZF) %>%
+  dplyr::mutate(
+    lfc = as.numeric(lfc),
+    se = as.numeric(se),
+    p_val = as.numeric(p_val),
+    q_val = as.numeric(q_val),
+    diff_abundant = as.logical(diff_abundant),
+    fold_change = exp(lfc),
+    significant = ifelse(diff_abundant == TRUE, "*", ""),
+    direction = case_when(
+      diff_abundant & lfc > 0 ~ "Increased in ZF",
+      diff_abundant & lfc < 0 ~ "Decreased in ZF",
+      TRUE ~ "No change"
+    )
+  )
+
+# create volcano plot and save to file in png format
+volcano_plot <- ggplot(res_summary, aes(x = lfc, y = -log10(q_val), color = direction)) +
+  geom_point(alpha = 0.6, size = 1) +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  scale_color_manual(values = c("Increased in ZF" = "red", "Decreased in ZF" = "blue", "No change" = "grey")) +
+  theme_minimal(base_size = 12) +
+  labs(x = "Log2 Fold Change", y = "-log10(q-value)", title = "Volcano Plot")
+
+ggsave(path_target("volcano_plot_species.png"), volcano_plot, width = 8, height = 6, dpi = 300)
+```
+
+```{r}
+sigdiff_ancombc2 <- res_summary %>%
+  # filter significant
+  dplyr::filter(significant == "*") %>%
+  # sort by lfc in descending order
+  dplyr::arrange(desc(lfc))
+
+# write to file
+fwrite(sigdiff_ancombc2, path_target("sigdiff_ancombc2.tsv"), sep = "\t")
+```
+
+
+## Files written
+
+These files have been written to the target directory, `r paste0("data/", params$name)`:
+
+```{r list-files-target}
+projthis::proj_dir_info(path_target(), tz = "CET")
+```

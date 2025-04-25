@@ -24,7 +24,7 @@ params:
 
 **Updated: `r format(Sys.time(), '%Y-%m-%d %H:%M:%S', tz = 'CET')` CET.**
 
-The purpose of this document is ...
+The purpose of this document is to import protein annotation (bakta and eggnog) and quality control results (checkm2 and gtdbtk) into a sqlite database.
 
 ```{r setup}
 #| message: false
@@ -53,12 +53,116 @@ suppressPackageStartupMessages({
   library(here)
   library(conflicted)
   library(tidyverse)
+  library(data.table)
+  devtools::load_all()
 })
+
+con <- load_db()
 ```
 
 ## Tasks
 
 The first task is ...
+
+### Sample metadata
+
+```{r metadata}
+df_metadata <- openxlsx::read.xlsx(here(path_raw, "pc028-metadata.xlsx"), sheet = "metadata")
+DBI::dbWriteTable(con, "sample_metadata", df_metadata, overwrite = TRUE, row.names = FALSE)
+```
+
+
+### Contig protein annotations
+
+In this section, proteins were from **assembled contigs, not MAGs**. These provide more detailed functional profile than MAG protein annotation. If we want to compare the functional profile differences between different sample groups, using contig protein annotation is more appropriate.
+
+**Bakta are more accurate and provide more annotation source such as:**
+
+- Gene names
+- Product descriptions  
+- GO terms
+- EC numbers
+- RefSeq identifiers
+- UniRef identifiers
+
+**EggNOG provides additional annotation source such as:**
+
+- KEGG pathways
+- CAZy
+- Protein domain annotations using PFAM
+
+
+```{r contig protein annotation to sqlite}
+#| eval: true
+#| cache: true
+df_binID2alias <- fread(here(path_data, "binID2alias.tsv"))
+
+df_bakta_all <- fread(here(path_data, "ap_d240525_bakta.tsv.gz")) %>% 
+  setnames(c("ID"), c("prot_id")) %>% 
+  add_binID(df_binID2alias, .)
+
+
+df_eggnog_all <- fread(here(path_data, "ap_d240525_eggnog.tsv.gz")) %>% 
+  setnames(c("query"), c("prot_id")) %>% 
+  add_binID(df_binID2alias, .)
+
+DBI::dbWriteTable(con, "anno_contig_prot_bakta", df_bakta_all, row.names = FALSE, overwrite = TRUE)
+DBI::dbWriteTable(con, "anno_contig_prot_eggnog", df_eggnog_all, row.names = FALSE, overwrite = TRUE)
+```
+
+### MAG protein annotations
+
+In this section, proteins were from MAGs. Since we mainly use MAGs in this project, these MAG protein annotation will allow us to trace the protein back to the MAG.
+
+- [ ] We can also try to use the MAG protein annotation to do the functional profile comparison between different sample groups.
+
+```{r MAG protein annotation to sqlite}
+#| eval: true
+#| cache: true
+clms_eggnog <- c("locus_tag", "seed_ortholog", "evalue", "score", "eggNOG_OGs", "max_annot_lvl", "COG_category", "Description", "Preferred_name", "GOs", "EC", "KEGG_ko", "KEGG_Pathway", "KEGG_Module", "KEGG_Reaction", "KEGG_rclass", "BRITE", "KEGG_TC", "CAZy", "BiGG_Reaction", "PFAMs", "contig", "bin")
+clms_bakta <- c("contig", "Type", "Start", "Stop", "Strand", "locus_tag", "Gene", "Product", "DbXrefs", "bin")
+
+df_bakta <- fread(here::here(path_data, "protein_annotation_bakta.tsv"), col.names = clms_bakta)
+
+df_bakta_bin <- df_bakta %>% dplyr::filter(bin!="")
+df_bakta_nobin <- df_bakta %>% dplyr::filter(bin=="")
+
+df_eggnog <- fread(here::here(path_data, "protein_annotation_eggnog.tsv"), col.names = clms_eggnog)
+  
+df_eggnog_bin <- df_eggnog %>% dplyr::filter(bin!="")
+df_eggnog_nobin <- df_eggnog %>% dplyr::filter(bin=="")
+
+DBI::dbWriteTable(con, "anno_MAG_prot_bakta", df_bakta_bin, overwrite = TRUE, row.names = FALSE)
+DBI::dbWriteTable(con, "anno_MAG_prot_eggnog", df_eggnog_bin, overwrite = TRUE, row.names = FALSE)
+DBI::dbWriteTable(con, "anno_noMAG_prot_bakta", df_bakta_nobin, overwrite = TRUE, row.names = FALSE)
+DBI::dbWriteTable(con, "anno_noMAG_prot_eggnog", df_eggnog_nobin, overwrite = TRUE, row.names = FALSE)
+```
+
+### MAG annotation using CheckM2 and GTDB
+
+
+```{r CheckM2 and GTDB-Tk}
+#| eval: true
+#| cache: true
+# import CheckM2 results
+df_checkm <- fread(here(path_data, "checkm2_quality_report.tsv")) %>% 
+  setnames("Name", "bin")
+df_checkm <- df_checkm %>% 
+  dplyr::mutate(quality = case_when(
+    Completeness >= 90 & Contamination <= 5 ~ "HQ",
+    Completeness >= 70 & Contamination <= 10 ~ "MQ",
+    TRUE ~ "LQ"
+  ))
+
+# import GTDB results
+df_gtdb <- fread(here(path_data, "gtdbtk.bac120.summary.tsv")) %>% 
+  setnames("user_genome", "bin")
+
+DBI::dbWriteTable(con, "anno_MAG_checkm2", df_checkm, overwrite = TRUE, row.names = FALSE)
+DBI::dbWriteTable(con, "anno_MAG_gtdb", df_gtdb, overwrite = TRUE, row.names = FALSE)
+```
+
+
 
 ## Files written
 

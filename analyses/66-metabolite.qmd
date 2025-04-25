@@ -1,0 +1,322 @@
+---
+title: "66-metabolite"
+title-block-banner: true
+author:
+  - name: Shujie Tian
+date: 2025-04-28
+toc: true
+toc-depth: 4
+number-sections: true
+code-fold: true
+code-line-numbers: true
+code-tools: true
+format: 
+  html:
+    embed-resources: true
+    smooth-scroll: true
+    page-layout: full
+reference-location: section
+citation-location: document
+params:
+  name: "66-metabolite"
+---
+
+**Updated: `r format(Sys.time(), '%Y-%m-%d %H:%M:%S', tz = 'CET')` CET.**
+
+The purpose of this document is ...
+
+```{r setup}
+#| message: false
+#| include: false
+#| warning: false
+wd <- "analyses"
+if (basename(getwd()) != wd) {
+  setwd(here::here(wd))
+}
+params <- list(name = "66-metabolite")
+here::i_am(paste0(params$name, ".qmd"), uuid = "40f3016c-79c3-42dc-88f0-41a5a6d0ecdc")
+projthis::proj_create_dir_target(params$name, clean = FALSE)
+path_target <- projthis::proj_path_target(params$name)
+path_source <- projthis::proj_path_source(params$name)
+path_raw <- path_source("00-raw")
+path_resource <- here::here(path_raw, "d00-resource")
+path_data <- here::here(path_raw, paste0("d", params$name))
+dir.create(path_raw, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_data, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_resource, recursive = TRUE, showWarnings = FALSE)
+```
+
+```{r packages}
+#| message: false
+#| warning: false
+suppressPackageStartupMessages({
+  library(here)
+  library(conflicted)
+  library(tidyverse)
+  library(data.table)
+  library(stringi)
+  library(ggrepel)
+  devtools::load_all()
+})
+```
+
+## Tasks
+
+The first task is ...
+
+### METABOLOMICS DATA PREPARATION FOR METABOANALYST
+
+```{r }
+# Read metadata and metabolite data
+group32 <- read.csv(here(path_data, "group32.csv"))
+metabolites32 <- read.csv(here(path_data, "metabolites32.csv"), row.names = 1)
+
+# Extract just the abundance data (columns 2-34)
+metabolites32_data <- metabolites32[, 2:34]
+
+# Save raw abundance data
+write.csv(metabolites32_data, path_target("metabolites32_data.csv"), row.names = FALSE)
+
+# ------------------------------
+# 2. PREPARE DATA WITH SAMPLE IDs
+# ------------------------------
+
+# Transpose negative mode data (columns 2-33)
+metabolites32_data_neg <- metabolites32[, 2:33]
+metabolites32_data_neg_t <- as.data.frame(t(metabolites32_data_neg))
+metabolites32_data_neg_t$Sample <- row.names(metabolites32_data_neg_t)
+
+# Merge with group information
+metabolites32_data_t_neg_group <- merge(metabolites32_data_neg_t, group32, by = "Sample", all.x = TRUE)
+
+# Reorder columns: Sample, Group, then metabolites
+metabolites32_data_t_neg_group <- metabolites32_data_t_neg_group %>%
+  dplyr::select(1, ncol(metabolites32_data_t_neg_group), 2:(ncol(metabolites32_data_t_neg_group) - 1))
+
+# Save formatted data
+write_excel_csv(metabolites32_data_t_neg_group, path_target("metabolites32_data_t_neg_group.csv"))
+
+# ------------------------------
+# 3. PREPARE HMDB-ANNOTATED DATA
+# ------------------------------
+
+# Extract HMDB IDs and sample data
+X <- c("HMDB_ID", metabolites32_data_t_neg_group$Sample)
+metabolites32_data_HMDB <- metabolites32[, X]
+
+# Transpose HMDB data
+metabolites32_data_HMDB_t <- as.data.frame(t(metabolites32_data_HMDB))
+names(metabolites32_data_HMDB_t) <- metabolites32_data_HMDB$HMDB_ID
+metabolites32_data_HMDB_t$Sample <- row.names(metabolites32_data_HMDB_t)
+
+# Remove HMDB_ID row and merge with group info
+metabolites32_data_HMDB_t <- metabolites32_data_HMDB_t[!row.names(metabolites32_data_HMDB_t) %in% "HMDB_ID", ]
+metabolites32_data_HMDB_t_group <- merge(metabolites32_data_HMDB_t, group32, by = "Sample", all.x = TRUE)
+
+# Clean column names (remove "--" columns)
+colnames_list <- names(metabolites32_data_HMDB_t_group)
+colnames_list <- colnames_list[colnames_list != "--"]
+metabolites32_data_HMDB_t_group <- metabolites32_data_HMDB_t_group %>%
+  dplyr::select(all_of(colnames_list))
+
+# Reorder columns: Sample, Group, then metabolites
+metabolites32_data_HMDB_t_group <- metabolites32_data_HMDB_t_group %>%
+  dplyr::select(1, ncol(metabolites32_data_HMDB_t_group), 2:(ncol(metabolites32_data_HMDB_t_group) - 1))
+
+# Save final HMDB-annotated data
+write_excel_csv(metabolites32_data_HMDB_t_group, path_target("metabolites32_data_HMDB_t_group_final.csv"))
+```
+
+### PROCESSING DIFFERENTIAL METABOLITES FOR KEGG ANALYSIS
+
+```{r }
+# Read volcano plot results
+volcano <- read.csv(here(path_data, "volcano.csv"), header = TRUE)
+
+# Filter significant metabolites (p < 0.05 and |log2FC| ≥ 1)
+volcano0.05 <- volcano[volcano$p.value < 0.05 & 
+                abs(volcano$log2.FC.) >= 1,]
+
+# Read normalized metabolite data
+data_normalized <- read.csv(here(path_data, "data_normalized.csv"))
+
+# Merge with significant metabolites
+sig_metabolites_data <- merge(data_normalized, volcano0.05, by = "X", all = FALSE)
+
+# Extract annotation columns from metabolites data
+metabolites_annotations <- metabolites32[, c("name", "KEGG_annotation", "HMDB_ID")]
+metabolites_annotations$Sample <- row.names(metabolites_annotations)
+
+# Merge with significant metabolites data
+annotated_data <- merge(sig_metabolites_data, metabolites_annotations, 
+                       by.x = "X", by.y = "Sample", all.x = TRUE)
+
+# ----------------------------
+# Prepare HMDB-annotated data
+# ----------------------------
+
+# Select HMDB IDs and sample columns
+hmdb_annotated <- annotated_data[,c("HMDB_ID", names(data_normalized)[2:33])]
+
+# Remove entries with missing HMDB IDs
+hmdb_annotated <- subset(hmdb_annotated, HMDB_ID != "--")
+
+# Transpose the data
+hmdb_ids <- hmdb_annotated$HMDB_ID
+hmdb_transposed <- as.data.frame(t(hmdb_annotated[,-1]))
+names(hmdb_transposed) <- hmdb_ids
+hmdb_transposed$Sample <- row.names(hmdb_transposed)
+
+# Add group information
+hmdb_with_groups <- merge(hmdb_transposed, group32, by = "Sample", all.x = TRUE)
+
+# Save HMDB-annotated data
+write_excel_csv(hmdb_with_groups, 
+               path_target("significant_metabolites_hmdb_annotated.csv"))
+
+# ----------------------------
+# Prepare name-annotated data
+# ----------------------------
+
+# Select metabolite names and sample columns
+name_annotated <- annotated_data[,c("name", names(data_normalized)[2:33])]
+
+# Transpose the data
+metabolite_names <- annotated_data$name
+name_transposed <- as.data.frame(t(name_annotated))
+name_transposed <- name_transposed[-1,] # Remove header row
+names(name_transposed) <- metabolite_names
+name_transposed$Sample <- row.names(name_transposed)
+
+# Add group information
+name_with_groups <- merge(name_transposed, group32, by = "Sample", all.x = TRUE)
+
+# Reorder columns: Sample, Group, then metabolites
+name_with_groups <- name_with_groups %>%
+  dplyr::select(Sample, Group = Group, everything())
+
+# Save name-annotated data
+write_excel_csv(name_with_groups, 
+               path_target("significant_metabolites_name_annotated.csv"))
+```
+
+### Create pie chart
+
+```{r }
+name_with_groups_final <- name_with_groups
+# Transpose the data
+name_with_groups_final_t <- as.data.frame(t(name_with_groups_final))
+# Set column names from Sample column
+col32 <- name_with_groups_final$Sample
+names(name_with_groups_final_t) <- col32
+# Remove first two rows (Sample and Group)
+name_with_groups_final_t <- name_with_groups_final_t[-c(1:2),]
+# Save transposed data
+write.csv(name_with_groups_final_t,path_target("data_normalized221_metabolites32_name_t_group_final_t.csv"))
+# Get unique metabolite names
+unique_metabolist <- row.names(name_with_groups_final_t)
+# Get full metabolite information for these metabolites
+metabolit221_full <- metabolites32[metabolites32$name %in% unique_metabolist,]
+write.csv(metabolit221_full,path_target("metabolit221_full.csv"))
+print(metabolit221_full)
+ # Create frequency table of super classes
+ data <- as.data.frame(table(metabolit221_full$super_class.HMDB.), stringsAsFactors = FALSE)
+names(data) <- c("Category", "Count")
+data <- data %>%
+  mutate(Category = ifelse(Category == "--", "Others", Category))
+# Calculate percentages
+data$Percentage <- data$Count / sum(data$Count) * 100
+data <- data %>%
+  mutate(
+    legend_label = paste0(Category, " (", Count, ")"),
+    pie_label = paste0(round(Percentage, 2), "%")
+  )
+# Calculate label positions for pie chart
+data <- data %>%
+  arrange(desc(Category)) %>% 
+  mutate(
+    ypos = cumsum(Percentage) - 0.5 * Percentage,  
+    legend_label = paste0(Category, " (", Count, ")"),
+   pie_label = paste0(round(Percentage, 2), "%")
+  )
+# Create pie chart
+ggplot(data, aes(x = "", y = Percentage, fill = legend_label)) +
+  geom_bar(stat = "identity", width = 0.1, color = "white", linewidth = 0.2) +
+  coord_polar(theta = "y") +
+# Add labels with repulsion to avoid overlap  
+  geom_text_repel(
+    aes(y = ypos, label = pie_label), 
+    size = 6,
+    fontface = "bold",
+    color = "black",
+    point.padding = 0.4, 
+    box.padding = 0.5,   
+    min.segment.length = 0,  
+   segment.color =NA,  
+    force = 0.8  
+  ) +
+  # Use ColorBrewer Set3 palette
+  scale_fill_brewer(palette = "Set3",direction = -1) +  
+  labs(fill = "Category (Count)") +
+  theme_void() +
+  theme(
+    legend.title = element_text(size = 14,face = "bold", margin = margin(b = 10)),
+    legend.text = element_text(size = 12, face = "bold"),
+    legend.position = "right",
+    legend.key.size = unit(1.5, "lines")
+  )
+
+ggsave(path_target("pie_metasbolits.pdf"),width = 8,height = 6)
+ggsave(path_target("pie_metasbolits.png"),width = 8,height = 6)
+```
+
+
+### Volcano plot
+
+```{r}
+DEG <-volcano
+# 绘制火山图====================================
+# 设置pvalue和logFC的阈值
+cut_off_pvalue = 0.05
+cut_off_logFC = 1
+# 根据阈值分别为上调基因设置‘up’，下调基因设置‘Down’，无差异设置‘None’，保存到change列
+# 这里的change列用来设置火山图点的颜色
+DEG$Sig = ifelse(DEG$p.value < cut_off_pvalue & 
+                abs(DEG$log2.FC.) >= cut_off_logFC, 
+                ifelse(DEG$log2.FC.> 0 ,'Up','Down'),'None')
+
+ggplot(DEG, aes(x = log2.FC., y = X.log10.p., colour = Sig)) +
+  geom_point(alpha = 0.8, size = 2.5) +
+  scale_color_manual(values = c("#546de5", "#d2dae2", "#ff4757")) +
+  # 辅助线
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed", color = "black", linewidth = 0.8) +
+  geom_hline(yintercept = -log10(cut_off_pvalue), linetype = "dashed", color = "black", linewidth = 0.8) +
+  labs(
+    x = "log2(Fold Change)",
+    y = "-log10 (P-value)"
+  ) +
+  theme_bw() +
+  theme(
+    axis.title = element_text(size = 21, face = "bold"),  
+    axis.text = element_text(size = 18, face = "bold"),  
+    legend.text = element_text(size = 18, face = "bold"),  
+    legend.title = element_text(size = 18, face = "bold"),  
+    plot.title = element_text(size = 21, face = "bold", hjust = 0.5),  
+    panel.grid.major = element_line(linewidth = 0.5, linetype = "dashed", color = "grey80"),
+    panel.grid.minor = element_blank()
+  )
+ggsave(path_target("voca_metasbolits.pdf"),width = 8,height = 6)
+ggsave(path_target("voca_metasbolits.png"),width = 8,height = 6)
+table(DEG$Sig)
+#Down None   Up 
+# 37 3950   184 
+```
+
+
+## Files written
+
+These files have been written to the target directory, `r paste0("data/", params$name)`:
+
+```{r list-files-target}
+projthis::proj_dir_info(path_target(), tz = "CET")
+```

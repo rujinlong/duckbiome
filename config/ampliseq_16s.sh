@@ -1,0 +1,1 @@
+nextflow run nf-core/ampliseq -r 2.11.0 -profile singularity -params-file ampliseq_16s.yml --outdir output -resume --skip_diversity_indices --skip_alpha_rarefaction --dada_taxonomy_rc

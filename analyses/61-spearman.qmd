@@ -1,0 +1,367 @@
+---
+title: "61-spearman"
+title-block-banner: true
+author:
+  - name: Shujie Tian
+date: 2025-04-28
+toc: true
+toc-depth: 4
+number-sections: true
+code-fold: true
+code-line-numbers: true
+code-tools: true
+format: 
+  html:
+    embed-resources: true
+    smooth-scroll: true
+    page-layout: full
+reference-location: section
+citation-location: document
+params:
+  name: "61-spearman"
+---
+
+**Updated: `r format(Sys.time(), '%Y-%m-%d %H:%M:%S', tz = 'CET')` CET.**
+
+The purpose of this document is ...
+
+```{r setup}
+#| message: false
+#| include: false
+#| warning: false
+wd <- "analyses"
+if (basename(getwd()) != wd) {
+  setwd(here::here(wd))
+}
+params <- list(name = "61-spearman")
+here::i_am(paste0(params$name, ".qmd"), uuid = "a5225fe8-6d2d-42d4-af89-7098a285842c")
+projthis::proj_create_dir_target(params$name, clean = FALSE)
+path_target <- projthis::proj_path_target(params$name)
+path_source <- projthis::proj_path_source(params$name)
+path_raw <- path_source("00-raw")
+path_resource <- here::here(path_raw, "d00-resource")
+path_data <- here::here(path_raw, paste0("d", params$name))
+dir.create(path_raw, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_data, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_resource, recursive = TRUE, showWarnings = FALSE)
+```
+
+```{r packages}
+#| message: false
+#| warning: false
+suppressPackageStartupMessages({
+  library(here)
+  library(conflicted)
+  library(tidyverse)
+  library(data.table)
+  library(Hmisc)
+  library(ggpubr)
+  library(ggcorrplot)
+  library(reshape2)
+  library(cowplot)
+  devtools::load_all()
+})
+```
+
+## Tasks
+
+The first task is ...
+
+
+```{r character}
+character41 <- read.csv(here(path_data, "character.csv"),header = T,row.names = 1)
+unique_species <- read.csv(here(path_data, "unique.csv"),header = T,row.names = 1)
+unique_species <- t(unique_species)
+unique_species <- unique_species[match(row.names(character41),row.names(unique_species)),]
+tunique <- unique_species
+
+#fcr_UMG263
+fcr <- character41[,c("FCR")]
+UMG263 <- tunique[,c("UMGS263 sp949289045")]
+fcr_UMG263 <- cbind(fcr,UMG263)
+fcr_UMG263 <- as.data.frame(fcr_UMG263)
+names(fcr_UMG263) <- c("FCR","UMGS263 sp949289045")
+
+#ggscatter5.3 
+p3 <- ggscatter(fcr_UMG263, x = "UMGS263 sp949289045", y = "FCR", 
+          color = "red3",fill = "lightgray",
+          add = "reg.line", conf.int = TRUE, 
+          add.params = list( color = "black",fill = "lightgray",fill = "lightgray"),
+          cor.coef = T,
+          cor.coeff.args = list(),
+          cor.method = "spearman",
+          cor.coef.coord = c(-2,2.7),
+          cor.coef.size = 14)+
+  theme(
+    axis.title.x = element_text(size = 35),  
+    axis.title.y = element_text(size = 35), 
+    axis.text.x = element_text(size = 30),   
+    axis.text.y = element_text(size = 30)  
+  )
+p3
+ggsave(path_target("fcr_UMG263.png"),plot = p3,width = 7,height = 7)
+ggsave(path_target("fcr_UMG263.pdf"),plot = p3,width = 8,height = 8)
+
+
+#fcr_phoca
+phoca <- tunique[,c("Phocaeicola barnesiae")]
+fcr_phoca <- cbind(fcr,phoca)
+fcr_phoca <- as.data.frame(fcr_phoca)
+names(fcr_phoca) <- c("FCR","Phocaeicola barnesiae")
+#ggscatter5.3 
+p4 <- ggscatter(fcr_phoca, x = "Phocaeicola barnesiae", y = "FCR", 
+          color = "red3",fill = "lightgray",
+          add = "reg.line", conf.int = TRUE, 
+          add.params = list( color = "black",fill = "lightgray",fill = "lightgray"),
+          cor.coef = T,
+          cor.coeff.args = list(),
+          cor.method = "spearman",
+          cor.coef.coord = c(-2.8,2.7),
+          cor.coef.size = 14)+
+  theme(
+    axis.title.x = element_text(size = 35),  
+    axis.title.y = element_text(size = 35), 
+    axis.text.x = element_text(size = 30),   
+    axis.text.y = element_text(size = 30)    
+  )
+ggsave(path_target("fcr_phoca.png"),plot = p4,width = 7,height = 7)
+ggsave(path_target("fcr_phoca.pdf"),plot = p4,width = 8,height = 8)
+#fcr_para
+para <- tunique[,c("Paraprevotella sp905215575")]
+fcr_para <- cbind(fcr,para)
+fcr_para <- as.data.frame(fcr_para)
+names(fcr_para) <- c("FCR","Paraprevotella sp905215575")
+#ggscatter5.3 
+p5 <- ggscatter(fcr_para, x = "Paraprevotella sp905215575", y = "FCR", 
+          color = "red3",fill = "lightgray",
+          add = "reg.line", conf.int = TRUE, 
+          add.params = list( color = "black",fill = "lightgray",fill = "lightgray"),
+          cor.coef = T,
+          cor.coeff.args = list(),
+          cor.method = "spearman",
+          cor.coef.coord = c(-1.4,2.7),
+          cor.coef.size = 14)+
+  theme(
+    axis.title.x = element_text(size = 35),  
+    axis.title.y = element_text(size = 35),  
+    axis.text.x = element_text(size = 30),  
+    axis.text.y = element_text(size = 30)    
+  )
+ggsave(path_target("fcr_para.png"),plot = p5,width = 7.3,height = 7.3)
+ggsave(path_target("fcr_para.pdf"),plot = p5,width = 8,height = 8)
+
+
+#fcr_bact
+bact <- tunique[,c("Bacteroides sp944322345")]
+fcr_bact <- cbind(fcr,bact)
+fcr_bact <- as.data.frame(fcr_bact)
+names(fcr_bact) <- c("FCR","Bacteroides sp944322345")
+#ggscatter5.3 
+p6 <- ggscatter(fcr_bact, x = "Bacteroides sp944322345", y = "FCR", 
+          color = "red3",fill = "lightgray",
+          add = "reg.line", conf.int = TRUE, 
+          add.params = list( color = "black",fill = "lightgray",fill = "lightgray"),
+          cor.coef = T,
+          cor.coeff.args = list(),
+          cor.method = "spearman",
+          cor.coef.coord = c(-2.4,2.7),
+          cor.coef.size = 14)+
+  theme(
+    axis.title.x = element_text(size = 35), 
+    axis.title.y = element_text(size = 35),  
+    axis.text.x = element_text(size = 30),   
+    axis.text.y = element_text(size = 30)    
+  )
+ggsave(path_target("fcr_bact.png"),plot = p6,width = 7,height = 7)
+ggsave(path_target("fcr_bact.pdf"),plot = p6,width = 8,height = 8)
+```
+
+```{r acid}
+acid <- read.csv(here(path_data, "acid.csv"),header = T,row.names = 1)
+acid41 <- t(acid)
+unique <- read.csv(here(path_data, "unique.csv"),header = T,row.names = 1)
+tunique <- t(unique)
+tunique <- tunique[match(row.names(acid41),row.names(tunique)),]
+
+buty <- acid41[,c("Butyric acid")]
+pro <- acid41[,c("Propionic acid")]
+#pro_UMG1449
+UMG1449 <- tunique[,c("UMGS1449 sp900551925")]
+pro_UMG1449 <- cbind(pro,UMG1449)
+pro_UMG1449 <- as.data.frame(pro_UMG1449)
+names(pro_UMG1449) <- c("Propionic acid","UMGS1449 sp900551925")
+#ggscatter5.3 
+p9 <- ggscatter(pro_UMG1449, x = "UMGS1449 sp900551925", y = "Propionic acid", 
+          color = "red3",fill = "lightgray",
+          add = "reg.line", conf.int = TRUE, 
+          add.params = list( color = "black",fill = "lightgray",fill = "lightgray"),
+          cor.coef = T,
+          cor.coeff.args = list(),
+          cor.method = "spearman",
+          cor.coef.coord = c(-4,0),
+          cor.coef.size = 14)+
+  theme(
+    axis.title.x = element_text(size = 35),  
+    axis.title.y = element_text(size = 35),  
+    axis.text.x = element_text(size = 30),   
+    axis.text.y = element_text(size = 30)   
+  )
+ggsave(path_target("pro_UMG1449.png"),plot = p9,width = 8,height = 8)
+ggsave(path_target("pro_UMG1449.pdf"),plot = p9,width = 8,height = 8)
+#pro_para
+para <- tunique[,c("Paraprevotella sp905215575")]
+pro_para <- cbind(pro,para)
+pro_para <- as.data.frame(pro_para)
+names(pro_para) <- c("Propionic acid","Paraprevotella sp905215575")
+#ggscatter5.3 
+p10 <- ggscatter(pro_para, x = "Paraprevotella sp905215575", y = "Propionic acid", 
+          color = "red3",fill = "lightgray",
+          add = "reg.line", conf.int = TRUE, 
+          add.params = list( color = "black",fill = "lightgray",fill = "lightgray"),
+          cor.coef = T,
+          cor.coeff.args = list(),
+          cor.method = "spearman",
+          cor.coef.coord = c(-1.3,0),          cor.coef.size = 14)+
+  theme(
+    axis.title.x = element_text(size = 35),  
+    axis.title.y = element_text(size = 35),  
+    axis.text.x = element_text(size = 30),   
+    axis.text.y = element_text(size = 30)    
+  )
+p10
+ggsave(path_target("pro_para.png"),plot = p10,width = 8,height = 8)
+ggsave(path_target("pro_para.pdf"),plot = p10,width = 8,height = 8)
+#pro_medq
+medq <- tunique[,c("Mediterraneibacter quadrami")]
+pro_medq <- cbind(pro,medq)
+pro_medq <- as.data.frame(pro_medq)
+names(pro_medq) <- c("Propionic acid","Mediterraneibacter quadrami")
+#ggscatter5.3 
+p11 <- ggscatter(pro_medq, x = "Mediterraneibacter quadrami", y = "Propionic acid", 
+          color = "red3",fill = "lightgray",
+          add = "reg.line", conf.int = TRUE, 
+          add.params = list( color = "black",fill = "lightgray",fill = "lightgray"),
+          cor.coef = T,
+          cor.coeff.args = list(),
+          cor.method = "spearman",
+          cor.coef.coord = c(-2,0),          cor.coef.size = 14)+
+  theme(
+    axis.title.x = element_text(size = 35),  
+    axis.title.y = element_text(size = 35),  
+    axis.text.x = element_text(size = 30),   
+    axis.text.y = element_text(size = 30)    
+  )
+ggsave(path_target("pro_medq.png"),plot = p11,width = 8.5,height = 8.5)
+ggsave(path_target("pro_medq.pdf"),plot = p11,width = 8.5,height = 8.5)
+#buty_UMG2016
+UMG2016 <- tunique[,c("UMGS2016 sp945872435")]
+buty_UMG2016 <- cbind(buty,UMG2016)
+buty_UMG2016 <- as.data.frame(buty_UMG2016)
+names(buty_UMG2016) <- c("Butyric acid","UMGS2016 sp945872435")
+#ggscatter5.3 
+p12 <- ggscatter(buty_UMG2016, x = "UMGS2016 sp945872435", y = "Butyric acid", 
+          color = "red3",fill = "lightgray",
+          add = "reg.line", conf.int = TRUE, 
+          add.params = list( color = "black",fill = "lightgray",fill = "lightgray"),
+          cor.coef = T,
+          cor.coeff.args = list(),
+          cor.method = "spearman",
+          cor.coef.coord = c(-3.5,0),          
+          cor.coef.size = 14)+
+  theme(
+    axis.title.x = element_text(size = 35), 
+    axis.title.y = element_text(size = 35),  
+    axis.text.x = element_text(size = 30),   
+    axis.text.y = element_text(size = 30)    
+  )
+ggsave(path_target("buty_UMG2016.png"),plot = p12,width = 8,height = 8)
+ggsave(path_target("buty_UMG2016.pdf"),plot = p12,width = 8,height = 8)
+```
+
+```{r }
+data <- cbind(character41[,c("FCR","ADG")],acid41[,c("Butyric acid","Propionic acid")])
+acid_hubgene <- cbind(data,unique_species)
+
+# Calculate correlation coefficients and significance
+spearman_results <- rcorr(as.matrix(acid_hubgene),type = "spearman")
+spearman_corr <- spearman_results$r
+spearman_pval <- spearman_results$P
+spearman_corr <- spearman_corr[-(1:4),-(5:25)]
+spearman_pval <- spearman_pval[-(1:4),-(5:25)]
+spearman_corr <- t(spearman_corr)
+spearman_pval <- t(spearman_pval)
+p2 <- ggcorrplot(corr=spearman_corr,method ="circle")
+ggsave(path_target("unique21_character_acid.png"),plot = p2,width = 6,height = 10)
+ggsave(path_target("unique21_character_acid.pdf"),plot = p2,width = 6,height = 10)
+```
+
+
+
+```{r }
+vc <- read.csv(here(path_data, "VCP_abundance.csv"),row.names = 1,header = T,sep = "\t")
+group <- read.csv(here(path_raw, "d60-import/group.csv"),row.names = 1)
+names(vc) <- group$sample_no
+vc <- vc[,row.names(unique_species)]
+vc <- as.data.frame(t(vc))
+
+vc <- vc[,c("VC4010","VC3611","VC3359","VC3052","VC2971","VC2862","VC2859","VC2785","VC2755","VC2722","VC2667","VC2518","VC2425","VC2396","VC2324","VC2285","VC2174","VC1483","VC0994","VC0894","VC0306")]# Significant correlation with FE-traits
+acid_hubgene <- cbind(vc,unique_species)
+
+# Calculate correlation coefficients and significance
+spearman_results <- rcorr(as.matrix(acid_hubgene),type = "spearman")
+spearman_corr <- spearman_results$r
+spearman_pval <- spearman_results$P
+spearman_corr <- spearman_corr[-(1:21),-(22:42)]
+spearman_pval <- spearman_pval[-(1:21),-(22:42)]
+
+# 2. Filter significant correlations (p < 0.05 & |r| > 0.3)
+sig_corr <- spearman_corr
+sig_corr[spearman_pval >= 0.05 | abs(spearman_corr) < 0.3] <- NA
+
+# 3. Create significance marker matrix
+sig_labels <- matrix("", nrow = nrow(spearman_pval), ncol = ncol(spearman_pval))
+sig_labels[spearman_pval < 0.05 & abs(spearman_corr) >= 0.3] <- "*"
+sig_labels[spearman_pval < 0.01 & abs(spearman_corr) >= 0.3] <- "**"
+sig_labels[spearman_pval < 0.001 & abs(spearman_corr) >= 0.3] <- "***"
+
+# 4. Filter rows and columns with at least one significant correlation
+keep_rows <- rowSums(!is.na(sig_corr)) > 0
+keep_cols <- colSums(!is.na(sig_corr)) > 0
+sig_corr_filtered <- sig_corr[keep_rows, keep_cols]
+sig_labels_filtered <- sig_labels[keep_rows, keep_cols]
+
+
+filtered <- row.names(sig_corr_filtered)
+
+sig_corr_filtered_final <- spearman_corr[filtered,]
+sig_corr_filtered_final <- as.matrix(sig_corr_filtered_final)
+
+p <- pheatmap::pheatmap(
+  sig_corr_filtered_final,
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  display_numbers = sig_labels_filtered,
+  number_color = "black",
+  fontsize_number = 8,
+  show_rownames = TRUE,  
+  show_colnames = TRUE,
+  na_col = "white",
+  color = rev(colorRampPalette(RColorBrewer::brewer.pal(6, "RdBu"))(100)),
+  main = "",
+   treeheight_row = 0,   
+  treeheight_col = 0,    
+  fontsize_row = 8,
+  fontsize_col = 8
+)
+
+ggsave(path_target("vc_s_blank.png"),plot = p,width = 7,height = 6)
+ggsave(path_target("vc_s_blank.pdf"),plot = p,width = 7,height = 6)
+```
+
+## Files written
+
+These files have been written to the target directory, `r paste0("data/", params$name)`:
+
+```{r list-files-target}
+projthis::proj_dir_info(path_target(), tz = "CET")
+```

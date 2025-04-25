@@ -1,20 +1,26 @@
 Package: duckbiome
-Title: An R package for project xxx
+Title: An R package for project duckBiome
 Version: 0.0.1
 Authors@R: 
     person("Jinlong", "Ru", , "jinlong.ru@gmail.com", role = c("aut", "cre"))
-Description: This is the package and shiny app for project duckbiome.
+Description: This is the package and code for project duckbiome.
 License: GPL (>= 3)
 URL: https://github.com/rujinlong/duckbiome
 BugReports: https://github.com/rujinlong/duckbiome/issues
 Imports: 
     config,
+    data.table,
+    DBI,
+    dplyr,
     golem,
-    shiny
-Suggests: 
-    knitr,
-    rmarkdown,
-    testthat (>= 3.0.0)
+    here,
+    KEGGREST,
+    magrittr,
+    RSQLite,
+    shiny,
+    stringr,
+    tibble,
+    tidyr
 VignetteBuilder: 
     knitr
 Config/testthat/edition: 3

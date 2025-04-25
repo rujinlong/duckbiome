@@ -1,0 +1,14 @@
+input: "manifest.tsv"
+metadata: "metadata.tsv"
+outdir: "output"
+FW_primer: "ACTCCTACGGGAGGCAGCA"
+RV_primer: "GGACTACHVGGGTWTCTAAT"
+min_len: 150
+dada_ref_taxonomy: gtdb
+max_cpus: 24
+max_memory: "270.GB"
+max_time: "70.h"
+seed: 42
+filter_ssu: "bac,arc"
+exclude_taxa: "mitochondria,chloroplast"
+picrust: true

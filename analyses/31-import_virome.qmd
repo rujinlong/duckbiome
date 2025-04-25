@@ -1,0 +1,244 @@
+---
+title: "31-import_virome"
+title-block-banner: true
+author:
+  - name: Jinlong Ru
+    orcid: 0000-0002-6757-6018
+date: 2025-04-25
+toc: true
+toc-depth: 4
+number-sections: true
+code-fold: true
+code-line-numbers: true
+code-tools: true
+format: 
+  html:
+    embed-resources: true
+    smooth-scroll: true
+    page-layout: full
+reference-location: section
+citation-location: document
+params:
+  name: "31-import_virome"
+---
+
+**Updated: `r format(Sys.time(), '%Y-%m-%d %H:%M:%S', tz = 'CET')` CET.**
+
+The purpose of this document is ...
+
+```{r setup}
+#| message: false
+#| include: false
+#| warning: false
+wd <- "analyses"
+if (basename(getwd()) != wd) {
+  setwd(here::here(wd))
+}
+params <- list(name = "31-import_virome")
+here::i_am(paste0(params$name, ".qmd"), uuid = "81797d1f-8ee5-4892-befc-2a4cfe16d355")
+projthis::proj_create_dir_target(params$name, clean = FALSE)
+path_target <- projthis::proj_path_target(params$name)
+path_source <- projthis::proj_path_source(params$name)
+path_raw <- path_source("00-raw")
+path_resource <- here::here(path_raw, "d00-resource")
+path_data <- here::here(path_raw, paste0("d", params$name))
+dir.create(path_raw, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_data, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_resource, recursive = TRUE, showWarnings = FALSE)
+```
+
+```{r packages}
+#| message: false
+suppressPackageStartupMessages({
+  library(here)
+  library(conflicted)
+  library(tidyverse)
+  library(data.table)
+  library(mia)
+  library(scater)
+  library(ggsci)
+  library(ggpubr) # For ellipses
+  library(patchwork)
+  library(ggrepel)
+  library(ANCOMBC)
+  library(KEGGREST)
+  # devtools::load_all("~/github/deng-lab/vpfkit")
+  devtools::load_all()
+})
+
+con <- load_db()
+```
+
+## Tasks
+
+The first task is ...
+
+### vOTU and VCs
+
+```{r import ViroProfiler results}
+df_vibrant <- parse_vibrant_quality(here(path_data, "VIBRANT_genome_quality_flt.tsv"))
+df_genomad <- parse_genomad_summary(here(path_data, "flt_virus_summary.tsv"))
+df_virsorter2 <- parse_virsorter2(here(path_data, "virsorter2-score.tsv"), here(path_data, "virsorter2-category.csv"))
+df_checkv <- parse_checkv_quality(here(path_data, "quality_summary.tsv"))
+df_ctg2vOTU <- parse_aniclst(here(path_data, "e2_contigs_ANIclst.tsv"))
+df_bacphlip <- parse_bacphlip(here(path_data, "bacphlip.tsv"))
+df_vcontact3 <- parse_vcontact3(here(path_data, "final_assignments.csv"))
+df_vcontact3_qry <- df_vcontact3 %>%
+  dplyr::filter(Reference == FALSE) %>%
+  dplyr::select(-c("Reference")) %>%
+  data.table::setnames("GenomeName", "contig_repid")
+
+# The df_ctg2asb table is variable between different projects, so we need to parse it separately
+df_ctg2asb <- fread(here(path_data, "01-map_ctg2asb.tsv"), header = FALSE) %>%
+  data.table::setnames(c("contig_id", "assembly_id")) %>%
+  dplyr::mutate(sample_id = stringr::str_replace_all(assembly_id, "__.*", "")) %>%
+  # some sample_id contains "_clean", remove it
+  dplyr::mutate(sample_id = stringr::str_replace_all(sample_id, "_clean", ""))
+```
+
+
+```{r merge all tables}
+df_contig_annotation <- df_ctg2vOTU %>%
+  dplyr::left_join(df_ctg2asb, by = "contig_id") %>%
+  dplyr::left_join(df_checkv, by = "contig_id") %>% 
+  dplyr::inner_join(df_genomad, by = "contig_id") %>% 
+  dplyr::inner_join(df_virsorter2, by = "contig_id") %>% 
+  dplyr::left_join(df_vibrant, by = "contig_id") %>%
+  dplyr::left_join(df_bacphlip, by = "contig_id") %>%
+  dplyr::left_join(df_vcontact3_qry, by = "contig_repid") %>% 
+  # create new column "lifestyle", set value to "temperate" if "vibrant_type" is "lysogenic" or "genomad_topology" is "Provirus" or "checkv_provirus" is "Yes" or "bacphlip_lifestyle" is "temperate", otherwise set to "virulent"
+  dplyr::mutate(lifestyle = dplyr::case_when(
+    vibrant_type == "lysogenic" | topology == "Provirus" | checkv_provirus == "Yes" | bacphlip_lifestyle == "temperate" ~ "temperate",
+    TRUE ~ "virulent")) %>% 
+  # sort by contig_id
+  dplyr::arrange(contig_id) %>%
+  # fill missing values in sample_id with previous non-NA value
+  tidyr::fill(sample_id, .direction = "down") %>%
+  dplyr::mutate(study_id = stringr::str_replace_all(sample_id, "_.*", "")) %>%
+  # put "contig_id" and "study_id" at the beginning of the data frame
+  dplyr::select(c("contig_id", "study_id", everything()))
+
+# Viral-host prediction by iPHoP
+df_host <- fread(here(path_data, "Host_prediction_to_genome.csv")) %>%
+  data.table::setnames(colnames(.), make.names(colnames(.))) %>%
+  data.table::setnames("Virus", "contig_id") %>%
+  dplyr::filter(Confidence.score >= 90) %>%
+  dplyr::filter(contig_id %in% df_contig_annotation$contig_id)
+
+# parse AMG results
+df_amg_dramv <- parse_amg(here(path_data, "amg_summary.tsv"), "dramv") %>% 
+  dplyr::filter(contig_id %in% df_contig_annotation$contig_id)
+
+df_amg_vibrant <- parse_amg(here(path_data, "VIBRANT_AMG_individuals_flt.tsv"), "vibrant") %>%
+  dplyr::filter(contig_id %in% df_contig_annotation$contig_id) %>%
+  dplyr::select(c("contig_id", everything()))
+```
+
+```{r metadata}
+df_metadata <- openxlsx::read.xlsx(here(path_raw, "pc028-metadata.xlsx"), sheet = "metadata")
+```
+
+```{r abundance}
+df_covfrac <- read_coverm_vir(here(path_data, "abundance_contigs_covered_fraction.tsv"))
+df_abundance_tmm <- read_coverm_vir(here(path_data, "abundance_contigs_trimmed_mean.tsv"))
+df_abundance_tpm <- read_coverm_vir(here(path_data, "abundance_contigs_tpm.tsv"))
+df_abundance_rpkm <- read_coverm_vir(here(path_data, "abundance_contigs_rpkm.tsv"))
+
+df_abundance_tmm_adjusted <- adjust_abundance_by_covfrac(df_abundance_tmm, df_covfrac, 0.5)
+df_abundance_tpm_adjusted <- adjust_abundance_by_covfrac(df_abundance_tpm, df_covfrac, 0.5)
+df_abundance_rpkm_adjusted <- adjust_abundance_by_covfrac(df_abundance_rpkm, df_covfrac, 0.5)
+
+# save df_abundance_adjusted_by_covfrac to sqlite database
+DBI::dbWriteTable(con, "vir_abundance_tmm", df_abundance_tmm_adjusted, overwrite = TRUE)
+DBI::dbWriteTable(con, "vir_abundance_tpm", df_abundance_tpm_adjusted, overwrite = TRUE)
+DBI::dbWriteTable(con, "vir_abundance_rpkm", df_abundance_rpkm_adjusted, overwrite = TRUE)
+```
+
+```{r save to sqlite}
+DBI::dbWriteTable(con, "vir_contig_annotation", df_contig_annotation, overwrite = TRUE)
+DBI::dbWriteTable(con, "vir_host", df_host, overwrite = TRUE)
+DBI::dbWriteTable(con, "vir_amg_dramv", df_amg_dramv, overwrite = TRUE)
+DBI::dbWriteTable(con, "vir_amg_vibrant", df_amg_vibrant, overwrite = TRUE)
+DBI::dbWriteTable(con, "vir_metadata", df_metadata, overwrite = TRUE)
+DBI::dbWriteTable(con, "vir_vcontact", df_vcontact3, overwrite = TRUE)
+```
+
+### Host
+
+```{r}
+df_virus <- fread(here(path_data, "viruses.txt"), header = F) %>% 
+  setnames("V1", "vOTU") %>% 
+  dplyr::mutate(repid = vOTU,
+                ctgid = vOTU)
+```
+
+
+
+
+### AMGs
+
+```{r eggnog}
+df_eggnog <- fread(here(path_data, "eggnog.tsv.gz"), sep = "\t")
+
+kID_in_samples <- df_eggnog %>% 
+  dplyr::filter(str_detect(KEGG_ko, "^ko:")) %>%
+  dplyr::pull(KEGG_ko) %>% 
+  str_split(",") %>%
+  unlist() %>% 
+  str_replace("ko:", "") %>%
+  unique()
+
+write_lines(kID_in_samples, path_target("kID_in_samples.txt"))
+```
+
+```{r kID in AMG}
+df_amg_vibrant <- parse_amg(here(path_data, "VIBRANT_AMG_individuals_flt.tsv"), "vibrant")
+df_amg_dram <- parse_amg(here(path_data, "amg_summary.tsv"), "dramv")
+
+kID_in_amg <- c(df_amg_dram$dbid, df_amg_vibrant$dbid) %>% unique()
+write_lines(kID_in_amg, path_target("kID_in_amg.txt"))
+write_lines(unique(df_amg_dram$dbid), path_target("kID_in_amg_dram.txt"))
+```
+
+```{r all AMG pathways}
+df_ko2pathway <- fread("/Users/allen/data2/db/kegg/20230512/ko2pathway.tsv", sep = "\t") %>%
+  dplyr::filter(str_detect(pathid, "^ko"))
+
+df_amg2pathway <- df_ko2pathway %>% 
+  dplyr::filter(koid %in% kID_in_amg) %>% 
+  dplyr::distinct()
+
+amg_pathway_ids <- df_amg2pathway$pathid %>% unique() %>% str_replace("ko", "")
+```
+
+### Create pathview plots
+
+Endocrine and Signaling Pathways:
+- PPAR signaling pathway (KEGG pathway: map03320): This pathway regulates fat storage and glucose metabolism and could be influenced by microbial metabolites.
+- Adipocytokine signaling pathway (KEGG pathway: map04920): Adipocytokines regulate fat metabolism, and microbial interactions may modulate these pathways.
+
+```{r pathview run only once, eval=FALSE}
+#| message: false
+#| warning: false
+#| eval: false
+target_pathway_ids <- c("03320", "04920", "00600", "00071")
+pathway_info <- list()
+for (pathid in target_pathway_ids) {
+  if (pathid != "01220") {
+    pathway_info[[pathid]] <- plot_pathview(pathid, kID_in_samples, kID_in_amg, df_ko2pathway)
+  }
+}
+
+# save pathway info
+saveRDS(pathway_info, path_target("pathway_info.rds"))
+```
+
+
+
+## Files written
+
+These files have been written to the target directory, `r paste0("data/", params$name)`:
+
+```{r list-files-target}
+projthis::proj_dir_info(path_target(), tz = "CET")
+```

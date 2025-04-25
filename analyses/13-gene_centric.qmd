@@ -1,0 +1,184 @@
+---
+title: "13-gene_centric"
+title-block-banner: true
+author:
+  - name: Jinlong Ru
+    orcid: 0000-0002-6757-6018
+date: 2025-04-29
+toc: true
+toc-depth: 4
+number-sections: true
+code-fold: true
+code-line-numbers: true
+code-tools: true
+format: 
+  html:
+    embed-resources: true
+    smooth-scroll: true
+    page-layout: full
+reference-location: section
+citation-location: document
+params:
+  name: "13-gene_centric"
+---
+
+**Updated: `r format(Sys.time(), '%Y-%m-%d %H:%M:%S', tz = 'CET')` CET.**
+
+The purpose of this document is ...
+
+```{r setup}
+#| message: false
+#| include: false
+#| warning: false
+wd <- "analyses"
+if (basename(getwd()) != wd) {
+  setwd(here::here(wd))
+}
+params <- list(name = "13-gene_centric")
+here::i_am(paste0(params$name, ".qmd"), uuid = "f0e90cc7-399d-4589-97da-a058a694c18f")
+projthis::proj_create_dir_target(params$name, clean = FALSE)
+path_target <- projthis::proj_path_target(params$name)
+path_source <- projthis::proj_path_source(params$name)
+path_raw <- path_source("00-raw")
+path_resource <- here::here(path_raw, "d00-resource")
+path_data <- here::here(path_raw, paste0("d", params$name))
+dir.create(path_raw, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_data, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_resource, recursive = TRUE, showWarnings = FALSE)
+```
+
+```{r packages}
+#| message: false
+suppressPackageStartupMessages({
+  library(here)
+  library(conflicted)
+  library(tidyverse)
+  library(data.table)
+  library(TreeSummarizedExperiment)
+  library(ANCOMBC)
+  library(EnhancedVolcano)
+  devtools::load_all()
+})
+
+con <- load_db()
+```
+
+## Tasks
+
+The first task is ...
+
+### KEGG
+
+```{r TSE}
+df_metadata <- DBI::dbGetQuery(con, "SELECT * FROM metadata") %>% 
+  tibble::column_to_rownames("sample_id")
+
+df_counts_ko <- fread(here(path_data, "abundance_kegg_counts.tsv")) %>% 
+  tibble::column_to_rownames("KO_ID")
+
+row_data <- data.frame(KO_ID = rownames(df_counts_ko)) %>% 
+  dplyr::mutate(rowname = KO_ID) %>%
+  tibble::column_to_rownames("rowname")
+
+tse <- TreeSummarizedExperiment(assays = list(counts = as.matrix(df_counts_ko[, rownames(df_metadata)])),
+                                colData = DataFrame(df_metadata),
+                                rowData = DataFrame(row_data))
+```
+
+```{r salmon}
+df_gene2ko <- fread(here(path_data, "gene_to_ko.tsv.gz"), header = FALSE) %>% 
+  data.table::setnames(colnames(.), c("feature_id", "KO_ID"))
+
+df_salmon <- fread(here(path_data, "salmon_counts.tsv.gz"))
+
+df_salmon_ko <- df_salmon %>% 
+  dplyr::inner_join(df_gene2ko, by = "feature_id") %>% 
+  dplyr::select(-c("feature_id")) %>% 
+  dplyr::select(KO_ID, everything()) %>% 
+  dplyr::group_by(KO_ID) %>% 
+  dplyr::summarise(across(starts_with("BY"), sum)) %>% 
+  dplyr::ungroup()
+
+fwrite(df_salmon_ko, path_target("salmon_counts_ko.tsv"), sep = "\t", row.names = FALSE)
+```
+
+
+```{r ANCOMBC2}
+ancom_result <- tryCatch({
+    ancombc2(data = tse,           # 直接使用 TSE 对象
+            assay_name = "counts", # 指定使用哪个 assay
+            tax_level = NULL,      # 对 KO 操作，无需指定分类级别
+            fix_formula = "group", # 主要比较变量
+            rand_formula = NULL,
+            p_adj_method = "holm",
+            prv_cut = 0.1,
+            lib_cut = 0,
+            group = "group", # 明确指定分组变量
+            struc_zero = TRUE,
+            neg_lb = TRUE,
+            alpha = 0.05,
+            global = TRUE,
+            n_cl = 1)
+}, error = function(e) {
+    stop("ANCOM-BC analysis failed with error: ", e)
+})
+```
+
+```{r}
+ancom_result_agg <- ancom_result
+res_df <- ancom_result_agg$res
+
+
+args_group_var <- "groupZF"
+
+lfc_col <- paste0("lfc_", args_group_var)
+se_col <- paste0("se_", args_group_var)
+w_col <- paste0("W_", args_group_var)
+pval_col <- paste0("p_", args_group_var)
+qval_col <- paste0("q_", args_group_var)
+diff_col <- paste0("diff_", args_group_var)
+
+# 检查这些列是否存在
+required_cols <- c(lfc_col, se_col, w_col, pval_col, qval_col, diff_col)
+available_cols <- colnames(res_df)
+required_cols_present <- base::intersect(required_cols, available_cols)
+
+
+# 提取相关列，并将行名（KO ID）转换为一个新列
+output_df <- res_df %>%
+    dplyr::mutate(KO_ID = taxon) %>% 
+    dplyr::select(KO_ID, all_of(required_cols_present)) %>% 
+    # 重命名列
+    rename_with(~ gsub(paste0("_", args_group_var), "", .x, fixed = TRUE), .cols = all_of(required_cols_present)) %>%
+    # 排序
+    arrange(!!sym(gsub(paste0("_", args_group_var), "", qval_col, fixed = TRUE))) # 使用符号进行排序
+
+# plot volcano plot using enhancedvolcano package
+
+EnhancedVolcano(
+                toptable = output_df,
+                lab = output_df$KO_ID, # 使用 KO_ID 作为标签
+                x = 'lfc',             # Log2 Fold Change 列名
+                y = 'q',           # Adjusted P value 列名 (或使用 p_val)
+                pointSize = 2.0,
+                labSize = 3.0,
+                # selectLab = plot_data$KO_ID[which(plot_data$q_val < args$plot_pcutoff & abs(plot_data$lfc) > args$plot_fccutoff)], # 可选：只标记显著点
+                colAlpha = 0.6,
+                legendPosition = 'right',
+                legendLabSize = 10,
+                legendIconSize = 4.0,
+                drawConnectors = TRUE, # 如果标记点，是否画线
+                widthConnectors = 0.5,
+                colConnectors = 'grey50'
+            )
+```
+
+
+
+## Files written
+
+These files have been written to the target directory, `r paste0("data/", params$name)`:
+
+```{r list-files-target}
+projthis::proj_dir_info(path_target(), tz = "CET")
+```

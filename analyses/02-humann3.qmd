@@ -1,0 +1,93 @@
+---
+title: "02-humann3"
+title-block-banner: true
+author:
+  - name: Jinlong Ru
+    orcid: 0000-0002-6757-6018
+date: 2025-01-25
+toc: true
+toc-depth: 4
+number-sections: true
+code-fold: true
+code-line-numbers: true
+code-tools: true
+format: 
+  html:
+    embed-resources: true
+    smooth-scroll: true
+    page-layout: full
+reference-location: section
+citation-location: document
+params:
+  name: "02-humann3"
+---
+
+**Updated: `r format(Sys.time(), '%Y-%m-%d %H:%M:%S', tz = 'CET')` CET.**
+
+The purpose of this document is ...
+
+```{r setup}
+#| message: false
+#| include: false
+#| warning: false
+wd <- "analyses"
+if (basename(getwd()) != wd) {
+  setwd(here::here(wd))
+}
+params <- list(name = "02-humann3")
+here::i_am(paste0(params$name, ".qmd"), uuid = "f3dbdfc7-5d4d-472b-9e53-c7e67ddfb4db")
+projthis::proj_create_dir_target(params$name, clean = FALSE)
+path_target <- projthis::proj_path_target(params$name)
+path_source <- projthis::proj_path_source(params$name)
+path_raw <- path_source("00-raw")
+path_resource <- here::here(path_raw, "d00-resource")
+path_data <- here::here(path_raw, paste0("d", params$name))
+dir.create(path_raw, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_data, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_resource, recursive = TRUE, showWarnings = FALSE)
+```
+
+```{r packages}
+#| message: false
+suppressPackageStartupMessages({
+  library(here)
+  library(conflicted)
+  library(tidyverse)
+  library(data.table)
+  devtools::load_all()
+})
+
+con <- load_db()
+```
+
+## Tasks
+
+The first task is ...
+
+```{r}
+df_hm3_ko_cpm <- fread(here(path_data, "humann3_genefamilies_normalized_regrouped_ko_cpm.tsv.gz")) %>% 
+  data.table::setnames(c("# Gene Family"), c("gene_family")) %>% 
+  data.table::setnames(colnames(.), str_replace_all(colnames(.), "_CPM", "")) %>% 
+  dplyr::mutate(gene_family = str_replace_all(gene_family, "^UN.*", "Unclassified")) %>% 
+  dplyr::mutate(koid = str_replace_all(gene_family, "\\|.*", "")) %>% 
+  dplyr::select(-c("gene_family")) %>%
+  # sum by aggregating `koid`
+  dplyr::group_by(koid) %>%
+  dplyr::summarise(across(everything(), \(x) sum(x, na.rm = TRUE))) %>%
+  dplyr::ungroup()
+
+df_ko_pathway <- fread("~/data2/db/kegg/20230512/ko2pathway.tsv")
+
+DBI::dbWriteTable(con, "humann3_ko_cpm", df_hm3_ko_cpm, overwrite = TRUE, row.names = FALSE)
+DBI::dbWriteTable(con, "ko_to_pathway", df_ko_pathway, overwrite = TRUE, row.names = FALSE)
+```
+
+
+## Files written
+
+These files have been written to the target directory, `r paste0("data/", params$name)`:
+
+```{r list-files-target}
+DBI::dbDisconnect(con)
+projthis::proj_dir_info(path_target(), tz = "CET")
+```

@@ -2,8 +2,6 @@
 output: github_document
 ---
 
-<!-- README.md is generated from README.Rmd. Please edit that file -->
-
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
@@ -13,42 +11,28 @@ knitr::opts_chunk$set(
 )
 ```
 
-# duckbiome
+# DuckBiome project
 
 <!-- badges: start -->
 <!-- badges: end -->
 
-The goal of duckbiome is to ...
+This repository contains the complete analysis code used in the manuscript: "**Bacteria and bacteriophage consortia modulate cecal SCFA production and host metabolism to enhance feed efficiency in ducks**".
 
-## Installation
+This study employs a multi-omics approach—integrating 16S amplicon sequencing, shotgun metagenomics, viromics, liver transcriptomics, and serum metabolomics—to investigate how gut microbial communities (bacteria and phages) influence feed efficiency (FE) in ducks. We identify key microbial taxa, functional pathways, and phage-encoded auxiliary metabolic genes (AMGs) that correlate with high FE, providing novel insights into host-microbiome interactions in poultry.
 
-You can install the development version of duckbiome like so:
+# Dockererized Rstudio server for reproducibility
 
-``` r
-# FILL THIS IN! HOW CAN PEOPLE INSTALL YOUR DEV PACKAGE?
+The dockerfile is in the `docker` folder. A pre-built docker image is pushed to Docker Hub. Users can pull the image and run the Rstudio server locally.
+
+```sh
+# pull the docker image (optional)
+docker pull jinlongru/duckbiome
+
+# run the docker image
+docker run -p 80:80 jinlongru/duckbiome
+
+# access the Rstudio server at http://localhost:80
+# username: rstudio
+# password: rstudio
 ```
 
-## Example
-
-This is a basic example which shows you how to solve a common problem:
-
-```{r example}
-library(duckbiome)
-## basic example code
-```
-
-What is special about using `README.Rmd` instead of just `README.md`? You can include R chunks like so:
-
-```{r cars}
-summary(cars)
-```
-
-You'll still need to render `README.Rmd` regularly, to keep `README.md` up-to-date. `devtools::build_readme()` is handy for this.
-
-You can also embed plots, for example:
-
-```{r pressure, echo = FALSE}
-plot(pressure)
-```
-
-In that case, don't forget to commit and push the resulting figure files, so they display on GitHub and CRAN.

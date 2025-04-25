@@ -1,0 +1,728 @@
+---
+title: "68-average_relative"
+title-block-banner: true
+author:
+  - name: Shujie Tian
+date: 2025-04-28
+toc: true
+toc-depth: 4
+number-sections: true
+code-fold: true
+code-line-numbers: true
+code-tools: true
+format: 
+  html:
+    embed-resources: true
+    smooth-scroll: true
+    page-layout: full
+reference-location: section
+citation-location: document
+params:
+  name: "68-average_relative"
+---
+
+**Updated: `r format(Sys.time(), '%Y-%m-%d %H:%M:%S', tz = 'CET')` CET.**
+
+The purpose of this document is ...
+
+```{r setup}
+#| message: false
+#| include: false
+#| warning: false
+wd <- "analyses"
+if (basename(getwd()) != wd) {
+  setwd(here::here(wd))
+}
+params <- list(name = "68-average_relative")
+here::i_am(paste0(params$name, ".qmd"), uuid = "852e8a5f-1fb8-431f-9cb9-4dd6ea8c660d")
+projthis::proj_create_dir_target(params$name, clean = FALSE)
+path_target <- projthis::proj_path_target(params$name)
+path_source <- projthis::proj_path_source(params$name)
+path_raw <- path_source("00-raw")
+path_resource <- here::here(path_raw, "d00-resource")
+path_data <- here::here(path_raw, paste0("d", params$name))
+dir.create(path_raw, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_data, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_resource, recursive = TRUE, showWarnings = FALSE)
+```
+
+```{r packages}
+#| message: false
+#| warning: false
+suppressPackageStartupMessages({
+  library(here)
+  library(conflicted)
+  library(tidyverse)
+  library(data.table)
+  library(RColorBrewer)
+  library(viridis)
+  library(ggthemes)
+  library(cowplot)
+  devtools::load_all()
+})
+```
+
+## Tasks
+
+The first task is ...
+
+
+### p36
+
+```{r }
+n_species <- 16
+palette <- c(
+  brewer.pal(12, "Set3"),    
+  brewer.pal(8, "Set2")  
+  
+)
+
+data <- read.csv(here(path_data, "p.csv"), row.names = 1) 
+
+# Ensure valid row names
+row.names(data) <- make.names(row.names(data))
+
+# Calculate total abundance for each species and sort
+sorted_species <- data %>% 
+  mutate(Total = rowSums(.)) %>% 
+  arrange(desc(Total)) %>% 
+  row.names()
+
+# Select top 15 most abundant species
+top15 <- sorted_species[1:15]
+
+# Transform data to long format and aggregate by group
+data_long <- data %>% 
+  rownames_to_column("Species") %>% 
+  pivot_longer(-Species, names_to = "Sample", values_to = "Abundance") %>% 
+  mutate(Group = substr(Sample, 1, 2))
+
+data_long2 <- data_long %>%
+  mutate(Species = ifelse(Species %in% top15, Species, "Others")) %>%
+  # First sum the "Others" within each Sample
+  group_by(Sample, Group, Species) %>%
+  summarise(Abundance = sum(Abundance), .groups = "drop")
+
+data_long3 <- data_long2 %>%
+  # Then calculate mean by Group and Species
+  group_by(Group, Species) %>% 
+  summarise(Abundance = mean(Abundance), .groups = "drop")
+
+# Calculate relative abundance within each group
+data_long3 <- data_long3 %>%
+  group_by(Group) %>%
+  mutate(RelAbundance = Abundance/sum(Abundance)) %>%
+  ungroup()
+
+
+species_sum <- data_long3 %>%
+  dplyr::filter(Species != "Others") %>%
+  group_by(Species) %>%
+  summarise(TotalRelAbundance = sum(RelAbundance)) %>%
+  ungroup()
+
+
+species_order <- species_sum %>% 
+  arrange(TotalRelAbundance) %>%  
+  pull(Species) %>% 
+  c("Others", .)                  
+
+
+plot_data_sorted <- data_long3 %>%
+  mutate(Species = factor(Species, levels = species_order)) 
+p1 <- ggplot(plot_data_sorted, aes(x = Group, y = RelAbundance, fill = Species)) +
+  geom_col(position = position_stack(reverse = FALSE), width = 0.7) +
+  scale_fill_manual(values = palette, breaks = species_order) +  # Explicitly set legend order
+  labs(
+    x = "", 
+    y = "Average Relative Abundance proportions", 
+    fill = "",
+    title = "Phylum"
+  ) +
+  theme_minimal(base_size = 16) +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0.5, face = "bold", size = 14),
+    axis.text.y = element_text(face = "bold", size = 14),
+    axis.title.y = element_text(face = "bold", size = 16),
+    legend.text = element_text(face = "bold", size = 12),
+    legend.title = element_text(face = "bold", size = 14),
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 18),
+    panel.grid.major.x = element_blank()
+  ) +
+  guides(fill = guide_legend(reverse = FALSE))  # Keep legend in original order
+
+
+
+ggsave(path_target("p36.pdf"),plot = p1,width = 5,height = 6)
+ggsave(path_target("p36.png"),plot = p1,width = 5,height = 6)
+```
+
+### c36
+
+```{r }
+data <- read.csv(here(path_data,"c.csv"), row.names = 1) 
+# Ensure valid row names
+row.names(data) <- make.names(row.names(data))
+
+# Calculate total abundance for each species and sort
+sorted_species <- data %>% 
+  mutate(Total = rowSums(.)) %>% 
+  arrange(desc(Total)) %>% 
+  row.names()
+
+# Select top 15 most abundant species
+top15 <- sorted_species[1:15]
+
+# Transform data to long format and aggregate by group
+data_long <- data %>% 
+  rownames_to_column("Species") %>% 
+  pivot_longer(-Species, names_to = "Sample", values_to = "Abundance") %>% 
+  mutate(Group = substr(Sample, 1, 2))
+
+data_long2 <- data_long %>%
+  mutate(Species = ifelse(Species %in% top15, Species, "Others")) %>%
+  # First sum the "Others" within each Sample
+  group_by(Sample, Group, Species) %>%
+  summarise(Abundance = sum(Abundance), .groups = "drop")
+
+data_long3 <- data_long2 %>%
+  # Then calculate mean by Group and Species
+  group_by(Group, Species) %>% 
+  summarise(Abundance = mean(Abundance), .groups = "drop")
+
+# Calculate relative abundance within each group
+data_long3 <- data_long3 %>%
+  group_by(Group) %>%
+  mutate(RelAbundance = Abundance/sum(Abundance)) %>%
+  ungroup()
+
+
+species_sum <- data_long3 %>%
+  dplyr::filter(Species != "Others") %>%
+  group_by(Species) %>%
+  summarise(TotalRelAbundance = sum(RelAbundance)) %>%
+  ungroup()
+
+species_order <- species_sum %>% 
+  arrange(TotalRelAbundance) %>%  
+  pull(Species) %>% 
+  c("Others", .)                  
+
+plot_data_sorted <- data_long3 %>%
+  mutate(Species = factor(Species, levels = species_order))  
+p2 <- ggplot(plot_data_sorted, aes(x = Group, y = RelAbundance, fill = Species)) +
+  geom_col(position = position_stack(reverse = FALSE), width = 0.7) +
+  scale_fill_manual(values = palette, breaks = species_order) +  # Explicitly set legend order
+  labs(
+    x = "", 
+    y = "Average Relative Abundance proportions", 
+    fill = "",
+    title = "Class"
+  ) +
+  theme_minimal(base_size = 16) +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0.5, face = "bold", size = 14),
+    axis.text.y = element_text(face = "bold", size = 14),
+    axis.title.y = element_text(face = "bold", size = 16),
+    legend.text = element_text(face = "bold", size = 12),
+    legend.title = element_text(face = "bold", size = 14),
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 18),
+    panel.grid.major.x = element_blank()
+  ) +
+  guides(fill = guide_legend(reverse = FALSE))  # Keep legend in original order
+
+# 保存图形
+ggsave(path_target("c36.pdf"),plot = p2,width = 5,height = 6)
+ggsave(path_target("c36.png"),plot=p2,width = 5,height = 6)
+
+```
+
+### o36
+
+```{r}
+data <- read.csv(here(path_data, "o.csv"), row.names = 1) 
+# Ensure valid row names
+row.names(data) <- make.names(row.names(data))
+
+# Calculate total abundance for each species and sort
+sorted_species <- data %>% 
+  mutate(Total = rowSums(.)) %>% 
+  arrange(desc(Total)) %>% 
+  row.names()
+
+# Select top 15 most abundant species
+top15 <- sorted_species[1:15]
+
+# Transform data to long format and aggregate by group
+data_long <- data %>% 
+  rownames_to_column("Species") %>% 
+  pivot_longer(-Species, names_to = "Sample", values_to = "Abundance") %>% 
+  mutate(Group = substr(Sample, 1, 2))
+
+data_long2 <- data_long %>%
+  mutate(Species = ifelse(Species %in% top15, Species, "Others")) %>%
+  # First sum the "Others" within each Sample
+  group_by(Sample, Group, Species) %>%
+  summarise(Abundance = sum(Abundance), .groups = "drop")
+
+data_long3 <- data_long2 %>%
+  # Then calculate mean by Group and Species
+  group_by(Group, Species) %>% 
+  summarise(Abundance = mean(Abundance), .groups = "drop")
+
+# Calculate relative abundance within each group
+data_long3 <- data_long3 %>%
+  group_by(Group) %>%
+  mutate(RelAbundance = Abundance/sum(Abundance)) %>%
+  ungroup()
+
+species_sum <- data_long3 %>%
+  dplyr::filter(Species != "Others") %>%
+  group_by(Species) %>%
+  summarise(TotalRelAbundance = sum(RelAbundance)) %>%
+  ungroup()
+
+species_order <- species_sum %>% 
+  arrange(TotalRelAbundance) %>%  
+  pull(Species) %>% 
+  c("Others", .)                  
+
+plot_data_sorted <- data_long3 %>%
+  mutate(Species = factor(Species, levels = species_order))  
+p3 <- ggplot(plot_data_sorted, aes(x = Group, y = RelAbundance, fill = Species)) +
+  geom_col(position = position_stack(reverse = FALSE), width = 0.7) +
+  scale_fill_manual(values = palette, breaks = species_order) +  # Explicitly set legend order
+  labs(
+    x = "", 
+    y = "Average Relative Abundance proportions", 
+    fill = "",
+    title = "Order"
+  ) +
+  theme_minimal(base_size = 16) +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0.5, face = "bold", size = 14),
+    axis.text.y = element_text(face = "bold", size = 14),
+    axis.title.y = element_text(face = "bold", size = 16),
+    legend.text = element_text(face = "bold", size = 12),
+    legend.title = element_text(face = "bold", size = 14),
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 18),
+    panel.grid.major.x = element_blank()
+  ) +
+  guides(fill = guide_legend(reverse = FALSE))  # Keep legend in original order
+
+
+ggsave(path_target("o36.pdf"),,plot = p3,width = 5,height = 6)
+ggsave(path_target("o36.png"),plot=p3,width = 5,height = 6)
+
+
+```
+
+### f36
+
+```{r }
+data <- read.csv(here(path_data, "f.csv"), row.names = 1) 
+# Ensure valid row names
+row.names(data) <- make.names(row.names(data))
+
+# Calculate total abundance for each species and sort
+sorted_species <- data %>% 
+  mutate(Total = rowSums(.)) %>% 
+  arrange(desc(Total)) %>% 
+  row.names()
+
+# Select top 15 most abundant species
+top15 <- sorted_species[1:15]
+
+# Transform data to long format and aggregate by group
+data_long <- data %>% 
+  rownames_to_column("Species") %>% 
+  pivot_longer(-Species, names_to = "Sample", values_to = "Abundance") %>% 
+  mutate(Group = substr(Sample, 1, 2))
+
+data_long2 <- data_long %>%
+  mutate(Species = ifelse(Species %in% top15, Species, "Others")) %>%
+  # First sum the "Others" within each Sample
+  group_by(Sample, Group, Species) %>%
+  summarise(Abundance = sum(Abundance), .groups = "drop")
+
+data_long3 <- data_long2 %>%
+  # Then calculate mean by Group and Species
+  group_by(Group, Species) %>% 
+  summarise(Abundance = mean(Abundance), .groups = "drop")
+
+# Calculate relative abundance within each group
+data_long3 <- data_long3 %>%
+  group_by(Group) %>%
+  mutate(RelAbundance = Abundance/sum(Abundance)) %>%
+  ungroup()
+
+species_sum <- data_long3 %>%
+  dplyr::filter(Species != "Others") %>%
+  group_by(Species) %>%
+  summarise(TotalRelAbundance = sum(RelAbundance)) %>%
+  ungroup()
+
+species_order <- species_sum %>% 
+  arrange(TotalRelAbundance) %>%  
+  pull(Species) %>% 
+  c("Others", .)                  
+plot_data_sorted <- data_long3 %>%
+  mutate(Species = factor(Species, levels = species_order))  
+p4 <- ggplot(plot_data_sorted, aes(x = Group, y = RelAbundance, fill = Species)) +
+  geom_col(position = position_stack(reverse = FALSE), width = 0.7) +
+  scale_fill_manual(values = palette, breaks = species_order) +  # Explicitly set legend order
+  labs(
+    x = "", 
+    y = "Average Relative Abundance proportions", 
+    fill = "",
+    title = "Family"
+  ) +
+  theme_minimal(base_size = 16) +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0.5, face = "bold", size = 14),
+    axis.text.y = element_text(face = "bold", size = 14),
+    axis.title.y = element_text(face = "bold", size = 16),
+    legend.text = element_text(face = "bold", size = 12),
+    legend.title = element_text(face = "bold", size = 14),
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 18),
+    panel.grid.major.x = element_blank()
+  ) +
+  guides(fill = guide_legend(reverse = FALSE))  # Keep legend in original order
+
+ggsave(path_target("f36.pdf"),plot = p4,width = 5,height = 6)
+ggsave(path_target("f36.png"),plot=p4,width = 5,height = 6)
+```
+
+### g36
+
+```{r }
+data <- read.csv(here(path_data, "g.csv"), row.names = 1) 
+
+# Ensure valid row names
+row.names(data) <- make.names(row.names(data))
+
+# Calculate total abundance for each species and sort
+sorted_species <- data %>% 
+  mutate(Total = rowSums(.)) %>% 
+  arrange(desc(Total)) %>% 
+  row.names()
+
+# Select top 15 most abundant species
+top15 <- sorted_species[1:15]
+
+# Transform data to long format and aggregate by group
+data_long <- data %>% 
+  rownames_to_column("Species") %>% 
+  pivot_longer(-Species, names_to = "Sample", values_to = "Abundance") %>% 
+  mutate(Group = substr(Sample, 1, 2))
+
+data_long2 <- data_long %>%
+  mutate(Species = ifelse(Species %in% top15, Species, "Others")) %>%
+  # First sum the "Others" within each Sample
+  group_by(Sample, Group, Species) %>%
+  summarise(Abundance = sum(Abundance), .groups = "drop")
+
+data_long3 <- data_long2 %>%
+  # Then calculate mean by Group and Species
+  group_by(Group, Species) %>% 
+  summarise(Abundance = mean(Abundance), .groups = "drop")
+
+# Calculate relative abundance within each group
+data_long3 <- data_long3 %>%
+  group_by(Group) %>%
+  mutate(RelAbundance = Abundance/sum(Abundance)) %>%
+  ungroup()
+
+species_sum <- data_long3 %>%
+  dplyr::filter(Species != "Others") %>%
+  group_by(Species) %>%
+  summarise(TotalRelAbundance = sum(RelAbundance)) %>%
+  ungroup()
+
+species_order <- species_sum %>% 
+  arrange(TotalRelAbundance) %>% 
+  pull(Species) %>% 
+  c("Others", .)                  
+
+plot_data_sorted <- data_long3 %>%
+  mutate(Species = factor(Species, levels = species_order))  
+p5 <- ggplot(plot_data_sorted, aes(x = Group, y = RelAbundance, fill = Species)) +
+  geom_col(position = position_stack(reverse = FALSE), width = 0.7) +
+  scale_fill_manual(values = palette, breaks = species_order) +  # Explicitly set legend order
+  labs(
+    x = "", 
+    y = "Average Relative Abundance proportions", 
+    fill = "",
+    title = "Genus"
+  ) +
+  theme_minimal(base_size = 16) +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0.5, face = "bold", size = 14),
+    axis.text.y = element_text(face = "bold", size = 14),
+    axis.title.y = element_text(face = "bold", size = 16),
+    legend.text = element_text(face = "bold", size = 12),
+    legend.title = element_text(face = "bold", size = 14),
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 18),
+    panel.grid.major.x = element_blank()
+  ) +
+  guides(fill = guide_legend(reverse = FALSE))  # Keep legend in original order
+
+
+ggsave(path_target("g36.pdf"),plot = p5,width = 5,height = 6)
+ggsave(path_target("g36.png"),plot=p5,width = 5,height = 6)
+```
+
+### s36
+
+```{r }
+data <- read.csv(here(path_data, "s.csv"), row.names = 1) 
+# Ensure valid row names
+row.names(data) <- make.names(row.names(data))
+
+# Calculate total abundance for each species and sort
+sorted_species <- data %>% 
+  mutate(Total = rowSums(.)) %>% 
+  arrange(desc(Total)) %>% 
+  row.names()
+
+# Select top 15 most abundant species
+top15 <- sorted_species[1:15]
+
+# Transform data to long format and aggregate by group
+data_long <- data %>% 
+  rownames_to_column("Species") %>% 
+  pivot_longer(-Species, names_to = "Sample", values_to = "Abundance") %>% 
+  mutate(Group = substr(Sample, 1, 2))
+
+data_long2 <- data_long %>%
+  mutate(Species = ifelse(Species %in% top15, Species, "Others")) %>%
+  # First sum the "Others" within each Sample
+  group_by(Sample, Group, Species) %>%
+  summarise(Abundance = sum(Abundance), .groups = "drop")
+
+data_long3 <- data_long2 %>%
+  # Then calculate mean by Group and Species
+  group_by(Group, Species) %>% 
+  summarise(Abundance = mean(Abundance), .groups = "drop")
+
+# Calculate relative abundance within each group
+data_long3 <- data_long3 %>%
+  group_by(Group) %>%
+  mutate(RelAbundance = Abundance/sum(Abundance)) %>%
+  ungroup()
+
+
+species_sum <- data_long3 %>%
+  dplyr::filter(Species != "Others") %>%
+  group_by(Species) %>%
+  summarise(TotalRelAbundance = sum(RelAbundance)) %>%
+  ungroup()
+
+
+species_order <- species_sum %>% 
+  arrange(TotalRelAbundance) %>%  
+  pull(Species) %>% 
+  c("Others", .)                 
+
+plot_data_sorted <- data_long3 %>%
+  mutate(Species = factor(Species, levels = species_order))   
+p6 <- ggplot(plot_data_sorted, aes(x = Group, y = RelAbundance, fill = Species)) +
+  geom_col(position = position_stack(reverse = FALSE), width = 0.7) +
+  scale_fill_manual(values = palette, breaks = species_order) +  # Explicitly set legend order
+  labs(
+    x = "", 
+    y = "Average Relative Abundance proportions", 
+    fill = "",
+    title = "Species"
+  ) +
+  theme_minimal(base_size = 16) +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0.5, face = "bold", size = 14),
+    axis.text.y = element_text(face = "bold", size = 14),
+    axis.title.y = element_text(face = "bold", size = 16),
+    legend.text = element_text(face = "bold", size = 12),
+    legend.title = element_text(face = "bold", size = 14),
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 18),
+    panel.grid.major.x = element_blank()
+  ) +
+  guides(fill = guide_legend(reverse = FALSE))  
+ggsave(path_target("s36.pdf"), plot = p6, width = 5.2, height = 6)
+ggsave(path_target("s36.png"), plot = p6, width = 5.2, height = 6)
+```
+
+### 16s p
+
+```{r}
+data <- read.csv(here(path_data, "rel_p_16s_sum_t.csv"), row.names = 1) 
+# Ensure valid row names
+row.names(data) <- make.names(row.names(data))
+
+# Calculate total abundance for each species and sort
+sorted_species <- data %>% 
+  mutate(Total = rowSums(.)) %>% 
+  arrange(desc(Total)) %>% 
+  row.names()
+
+# Select top 15 most abundant species
+top15 <- sorted_species[1:15]
+
+# Transform data to long format and aggregate by group
+data_long <- data %>% 
+  rownames_to_column("Species") %>% 
+  pivot_longer(-Species, names_to = "Sample", values_to = "Abundance") %>% 
+  mutate(Group = substr(Sample, 1, 2))
+
+data_long2 <- data_long %>%
+  mutate(Species = ifelse(Species %in% top15, Species, "Others")) %>%
+  # First sum the "Others" within each Sample
+  group_by(Sample, Group, Species) %>%
+  summarise(Abundance = sum(Abundance), .groups = "drop")
+
+data_long3 <- data_long2 %>%
+  # Then calculate mean by Group and Species
+  group_by(Group, Species) %>% 
+  summarise(Abundance = mean(Abundance), .groups = "drop")
+
+# Calculate relative abundance within each group
+data_long3 <- data_long3 %>%
+  group_by(Group) %>%
+  mutate(RelAbundance = Abundance/sum(Abundance)) %>%
+  ungroup()
+
+species_sum <- data_long3 %>%
+  dplyr::filter(Species != "Others") %>%
+  group_by(Species) %>%
+  summarise(TotalRelAbundance = sum(RelAbundance)) %>%
+  ungroup()
+
+species_order <- species_sum %>% 
+  arrange(TotalRelAbundance) %>%  
+  pull(Species) %>% 
+  c("Others", .)               
+
+plot_data_sorted <- data_long3 %>%
+  mutate(Species = factor(Species, levels = species_order))  
+p7 <- ggplot(plot_data_sorted, aes(x = Group, y = RelAbundance, fill = Species)) +
+  geom_col(position = position_stack(reverse = FALSE), width = 0.7) +
+  scale_fill_manual(values = palette, breaks = species_order) +  
+  labs(
+    x = "", 
+    y = "Average Relative Abundance proportions", 
+    fill = "",
+    title = "Phylum"
+  ) +
+  theme_minimal(base_size = 16) +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0.5, face = "bold", size = 14),
+    axis.text.y = element_text(face = "bold", size = 14),
+    axis.title.y = element_text(face = "bold", size = 16),
+    legend.text = element_text(face = "bold", size = 12),
+    legend.title = element_text(face = "bold", size = 14),
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 18),
+    panel.grid.major.x = element_blank()
+  ) +
+  guides(fill = guide_legend(reverse = FALSE)) 
+
+# Save plots
+ggsave(path_target("p16s.pdf"), plot = p7, width = 5.2, height = 6)
+ggsave(path_target("p16s.png"), plot = p7, width = 5.2, height = 6)
+```
+
+### 16s g
+
+```{r }
+data <- read.csv(here(path_raw, "d63-16s/rel_g_16s_sum_129.csv"), row.names = 1) 
+# Ensure valid row names
+row.names(data) <- make.names(row.names(data))
+
+# Calculate total abundance for each species and sort
+sorted_species <- data %>% 
+  mutate(Total = rowSums(.)) %>% 
+  arrange(desc(Total)) %>% 
+  row.names()
+
+# Select top 15 most abundant species
+top15 <- sorted_species[1:15]
+
+# Transform data to long format and aggregate by group
+data_long <- data %>% 
+  rownames_to_column("Species") %>% 
+  pivot_longer(-Species, names_to = "Sample", values_to = "Abundance") %>% 
+  mutate(Group = substr(Sample, 1, 2))
+
+data_long2 <- data_long %>%
+  mutate(Species = ifelse(Species %in% top15, Species, "Others")) %>%
+  # First sum the "Others" within each Sample
+  group_by(Sample, Group, Species) %>%
+  summarise(Abundance = sum(Abundance), .groups = "drop")
+
+data_long3 <- data_long2 %>%
+  # Then calculate mean by Group and Species
+  group_by(Group, Species) %>% 
+  summarise(Abundance = mean(Abundance), .groups = "drop")
+
+# Calculate relative abundance within each group
+data_long3 <- data_long3 %>%
+  group_by(Group) %>%
+  mutate(RelAbundance = Abundance/sum(Abundance)) %>%
+  ungroup()
+
+species_sum <- data_long3 %>%
+  dplyr::filter(Species != "Others") %>%
+  group_by(Species) %>%
+  summarise(TotalRelAbundance = sum(RelAbundance)) %>%
+  ungroup()
+
+species_order <- species_sum %>% 
+  arrange(TotalRelAbundance) %>%  
+  pull(Species) %>% 
+  c("Others", .)                 
+
+
+plot_data_sorted <- data_long3 %>%
+  mutate(Species = factor(Species, levels = species_order))  
+p11 <- ggplot(plot_data_sorted, aes(x = Group, y = RelAbundance, fill = Species)) +
+  geom_col(position = position_stack(reverse = FALSE), width = 0.7) +
+  scale_fill_manual(values = palette, breaks = species_order) +  
+  labs(
+    x = "", 
+    y = "Average Relative Abundance proportions", 
+    fill = "",
+    title = "Genus"
+  ) +
+  theme_minimal(base_size = 16) +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0.5, face = "bold", size = 14),
+    axis.text.y = element_text(face = "bold", size = 14),
+    axis.title.y = element_text(face = "bold", size = 16),
+    legend.text = element_text(face = "bold", size = 12),
+    legend.title = element_text(face = "bold", size = 14),
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 18),
+    panel.grid.major.x = element_blank()
+  ) +
+  guides(fill = guide_legend(reverse = FALSE)) 
+
+ggsave(path_target("g16s.pdf"), plot = p11, width = 5, height = 6)
+ggsave(path_target("g16s.png"), plot = p11, width = 5, height = 6)
+```
+
+```{r }
+plot_grid(p1,p2,p3,p4,p5,p6,labels=c('A','B','C','D',"E","F"), ncol=3, nrow=2)+theme(
+  plot.title = element_text(size = 90, face = "bold", color = "black")) 
+ggsave(path_target("p123456.pdf"),width = 15,height = 12)
+ggsave(path_target("p123456.png"),width = 15,height = 12)
+
+plot_grid(p7,p11,labels=c('A','B'), ncol=2, nrow=1)+theme(
+  plot.title = element_text(size = 90, face = "bold", color = "black")) 
+ggsave(path_target("p711.pdf"),width = 10,height = 6)
+ggsave(path_target("p711.png"),width = 10,height = 6)
+```
+
+
+## Files written
+
+These files have been written to the target directory, `r paste0("data/", params$name)`:
+
+```{r list-files-target}
+projthis::proj_dir_info(path_target(), tz = "CET")
+```

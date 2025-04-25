@@ -1,0 +1,137 @@
+---
+title: "63-16s"
+title-block-banner: true
+author:
+  - name: Shujie Tian
+date: 2025-04-28
+toc: true
+toc-depth: 4
+number-sections: true
+code-fold: true
+code-line-numbers: true
+code-tools: true
+format: 
+  html:
+    embed-resources: true
+    smooth-scroll: true
+    page-layout: full
+reference-location: section
+citation-location: document
+params:
+  name: "63-16s"
+---
+
+**Updated: `r format(Sys.time(), '%Y-%m-%d %H:%M:%S', tz = 'CET')` CET.**
+
+The purpose of this document is ...
+
+```{r setup}
+#| message: false
+#| include: false
+#| warning: false
+wd <- "analyses"
+if (basename(getwd()) != wd) {
+  setwd(here::here(wd))
+}
+params <- list(name = "63-16s")
+here::i_am(paste0(params$name, ".qmd"), uuid = "3f54e8d0-46b5-4527-b027-4dc1b3cefefb")
+projthis::proj_create_dir_target(params$name, clean = FALSE)
+path_target <- projthis::proj_path_target(params$name)
+path_source <- projthis::proj_path_source(params$name)
+path_raw <- path_source("00-raw")
+path_resource <- here::here(path_raw, "d00-resource")
+path_data <- here::here(path_raw, paste0("d", params$name))
+dir.create(path_raw, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_data, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_resource, recursive = TRUE, showWarnings = FALSE)
+```
+
+```{r packages}
+#| message: false
+#| warning: false
+suppressPackageStartupMessages({
+  library(here)
+  library(conflicted)
+  library(tidyverse)
+  library(data.table)
+  library(ggpubr)
+  library(ggsignif)
+  library(ggprism)
+  library(vegan)
+  library(picante)
+  library(RColorBrewer)
+  devtools::load_all()
+})
+```
+
+## Tasks
+
+The first task is ...
+
+```{r }
+# 1. Data loading and processing
+rel_16s_g_sum_129 <- read.csv(here(path_data, "rel_g_16s_sum_129.csv"), header = TRUE, row.names = 1)
+sample283 <- read.csv(here(path_data, "sample283.csv"), header = TRUE, row.names = 1)
+df <- rel_16s_g_sum_129
+groups <- sample283[, c("sampleID", "group")]
+
+# 2. Alpha diversity calculation
+Shannon <- vegan::diversity(df, index = "shannon", MARGIN = 2, base = exp(1))
+Richness <- specnumber(df, MARGIN = 2)
+tdf <- t(df)
+tdf <- ceiling(as.data.frame(t(df)))
+obs_chao_ace <- t(estimateR(tdf))
+index <- as.data.frame(cbind(Shannon, Richness))
+index$Chao <- obs_chao_ace[row.names(index), 2]
+index$Pielou <- Shannon / log(Richness, 2)
+index$name <- row.names(index)
+
+# 3. Merge group information
+names(groups)[1:2] <- c('samples', 'group')
+groups$name <- groups$samples
+df2 <- merge(index, groups, by = 'name')
+
+# 4. Transform data structure (keep only four indices)
+diver <- data.frame(
+  name = rep(c("Shannon", "Richness", "Chao", "Pielou"), each = nrow(df2)),
+  group = df2$group,
+  value = c(df2$Shannon, df2$Richness, df2$Chao, df2$Pielou)
+)
+
+# Set comparison groups
+my_comparisons1 <- list(c('CF','ZF'))
+
+# Create plot (adjusted layout for four indices)
+diver_plot_vc <- ggplot(diver, aes(y=value, x=group, group=group, color=group)) +
+  geom_boxplot(fill="white", outlier.shape = NA, lwd=0.8) +
+  theme(axis.line = element_line(size = 1, colour = "black", linetype=1)) +
+  theme(panel.background = element_rect(fill = "white")) +
+  geom_jitter(shape=16, position=position_jitter(0.2), size=0.7, alpha = 1, color="black") +
+  stat_compare_means(comparisons = my_comparisons1,
+                     method = 't.test', method.args = list(alternative = "two.sided"),
+                     ref.group = '.all.', label = "p.signif",
+                     tip.length=0.02, bracket.size = 0.5) +
+  facet_wrap(.~name, scales="free", ncol = 4) + 
+  ylab("") +
+  theme(axis.text.x = element_text(color = "black", size = 18, face = "bold"),
+        axis.text.y = element_text(color = "black", size = 18, face = "bold"),
+        axis.title.x = element_blank(),
+        #axis.title.y = element_text(color = "black", size = 16, face = "bold"),
+        legend.position = "none",
+        strip.text = element_text(size = 18, face = "bold"))
+
+diver_plot_vc
+
+# Save plots
+ggsave(path_target("selected_alpha_indices.pdf"), width = 10, height = 6)
+ggsave(path_target("selected_alpha_indices.png"), width = 10, height = 6)
+```
+
+
+## Files written
+
+These files have been written to the target directory, `r paste0("data/", params$name)`:
+
+```{r list-files-target}
+projthis::proj_dir_info(path_target(), tz = "CET")
+```

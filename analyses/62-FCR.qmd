@@ -1,0 +1,612 @@
+---
+title: "62-FCR"
+title-block-banner: true
+author:
+  - name: Shujie Tian
+date: 2025-04-28
+toc: true
+toc-depth: 4
+number-sections: true
+code-fold: true
+code-line-numbers: true
+code-tools: true
+format: 
+  html:
+    embed-resources: true
+    smooth-scroll: true
+    page-layout: full
+reference-location: section
+citation-location: document
+params:
+  name: "62-FCR"
+---
+
+**Updated: `r format(Sys.time(), '%Y-%m-%d %H:%M:%S', tz = 'CET')` CET.**
+
+The purpose of this document is ...
+
+```{r setup}
+#| message: false
+#| include: false
+#| warning: false
+wd <- "analyses"
+if (basename(getwd()) != wd) {
+  setwd(here::here(wd))
+}
+params <- list(name = "62-FCR")
+here::i_am(paste0(params$name, ".qmd"), uuid = "f284e8ac-afae-4368-a25c-8528e886d751")
+projthis::proj_create_dir_target(params$name, clean = FALSE)
+path_target <- projthis::proj_path_target(params$name)
+path_source <- projthis::proj_path_source(params$name)
+path_raw <- path_source("00-raw")
+path_resource <- here::here(path_raw, "d00-resource")
+path_data <- here::here(path_raw, paste0("d", params$name))
+dir.create(path_raw, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_data, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_resource, recursive = TRUE, showWarnings = FALSE)
+```
+
+```{r packages}
+#| message: false
+#| warning: false
+suppressPackageStartupMessages({
+  library(here)
+  library(conflicted)
+  library(tidyverse)
+  library(data.table)
+  library(ggpubr)
+  library(emmeans)
+  library(gridExtra)
+  library(patchwork)
+  devtools::load_all()
+})
+```
+
+## Tasks
+
+The first task is ...
+
+### 36
+
+```{r }
+# Read data
+character36 <- read.csv(here(path_raw, "d61-spearman/character.csv"),header = T,row.names = 1)
+character36$Group <- str_sub(row.names(character36), 1, 2)
+
+plot_unified <- function(data, y_var, y_label, y_offset = 0.1) {
+  # Ensure Group is a factor and maintain original order
+  data$Group <- factor(data$Group)
+  
+  group_levels <- levels(data$Group)
+  default_colors <- scales::hue_pal()(length(group_levels))
+  reversed_colors <- rev(default_colors)
+  names(reversed_colors) <- group_levels
+  
+  # Calculate y-axis range (keep original)
+  y_max <- max(data[[y_var]], na.rm = TRUE)
+  y_min <- min(data[[y_var]], na.rm = TRUE)
+  y_range <- y_max - y_min
+  
+  # Dynamically calculate key positions (keep original)
+  line_y_pos <- y_max + y_range * 0.15
+  label_y_pos <- line_y_pos + y_range * 0.08
+
+  ggplot(data, aes(x = Group, y = .data[[y_var]])) +
+    # Boxplot (modified: use reversed fill colors)
+    geom_boxplot(
+      aes(fill = Group),  
+      alpha = 0.5, 
+      outlier.shape = NA,
+      lwd = 0.8,
+      width = 0.5,
+      position = position_dodge(0.8)
+    ) +
+    geom_jitter(
+      aes(color = Group),  # Use aes color
+      shape = 16,
+      position = position_jitterdodge(
+        jitter.width = 0.2,
+        dodge.width = 0.8
+      ),
+      size = 2,
+      alpha = 0.7
+    ) +
+    scale_fill_manual(values = reversed_colors) +
+    scale_color_manual(values = reversed_colors) +
+    # Significance horizontal line (keep original)
+    geom_segment(
+      x = 1.1,
+      xend = 1.9,
+      y = line_y_pos,
+      yend = line_y_pos,
+      linewidth = 1.5,
+      color = "black"
+    ) +
+    # Significance marker (keep original)
+    stat_compare_means(
+      method = "t.test",
+      label = "p.signif",
+      label.x = 1.5,
+      label.y = label_y_pos,
+      size = 18,
+      vjust = 0.5
+    ) +
+    # Extend y-axis range (keep original)
+    scale_y_continuous(
+      limits = c(y_min, label_y_pos * 1.05),
+      expand = expansion(mult = c(0.05, 0.1))
+    ) +
+    theme_bw() +
+    labs(x = "", y = y_label) +
+    theme(
+      axis.title = element_text(size = 35),
+      axis.text = element_text(size = 30),
+      plot.margin = unit(c(1, 1, 1.5, 1), "cm"),
+      legend.position = "none"
+    )
+}
+
+# Assume dataset named character36 contains Group, Chao1, etc. columns
+# Plot each metric (using unified style)
+p1 <- plot_unified(character36[, c("Group", "FCR")], "FCR", "FCR")
+p2 <- plot_unified(character36[, c("Group", "ADG")], "ADG", "ADG (g/d)", y_offset = 0.05)
+
+# Combine plots
+p_combined <- (p1 + p2) + 
+  plot_annotation(tag_levels = 'A') & 
+  theme(plot.tag = element_text(size = 45, face = "bold"))
+# Save combined plots
+ggsave(path_target("combined_plots_new2.pdf"), p_combined, width = 20, height = 10)
+ggsave(path_target("combined_plots_new2.png"), p_combined, width = 20, height = 10, dpi = 300)
+```
+
+### 16S
+
+```{r 16s}
+character16s <- read.csv(here(path_data, "character16s.csv"),header = T,row.names = 1)
+# Perform ANOVA
+fit <- aov(FCR ~ Group, data = character16s)
+summary(fit)
+# Install and load emmeans package
+#install.packages("emmeans")
+
+# Calculate LSM
+emm <- emmeans(fit, pairwise ~ Group)
+summary(emm)
+# Get standard error of LSM
+emm_se <- summary(emm)$contrasts[, "SE"]
+# Assume actual is observed value, predicted is predicted value
+actual <- character16s$FCR
+predicted <- predict(fit, newdata = character16s)  
+# Calculate RMSE
+rmse <- sqrt(mean((actual - predicted)^2))
+rmse
+
+# Perform ANOVA
+fit <- aov(RFI ~ Group, data = character16s)
+summary(fit)
+# Install and load emmeans package
+
+# Calculate LSM
+emm <- emmeans(fit, pairwise ~ Group)
+summary(emm)
+# Get standard error of LSM
+emm_se <- summary(emm)$contrasts[, "SE"]
+# Assume actual is observed value, predicted is predicted value
+actual <- character16s$RFI
+predicted <- predict(fit, newdata = character16s)  # Make predictions using the model
+# Calculate RMSE
+rmse <- sqrt(mean((actual - predicted)^2))
+rmse
+
+# Perform ANOVA
+fit <- aov(ADFI ~ Group, data = character16s)
+summary(fit)
+# Install and load emmeans package
+
+# Calculate LSM
+emm <- emmeans(fit, pairwise ~ Group)
+summary(emm)
+# Get standard error of LSM
+emm_se <- summary(emm)$contrasts[, "SE"]
+# Assume actual is observed value, predicted is predicted value
+actual <- character16s$ADFI
+predicted <- predict(fit, newdata = character16s)  
+# Calculate RMSE
+rmse <- sqrt(mean((actual - predicted)^2))
+rmse
+
+# Perform ANOVA
+fit <- aov(ADG ~ Group, data = character16s)
+summary(fit)
+# Install and load emmeans package
+# Calculate LSM
+emm <- emmeans(fit, pairwise ~ Group)
+summary(emm)
+# Get standard error of LSM
+emm_se <- summary(emm)$contrasts[, "SE"]
+# Assume actual is observed value, predicted is predicted value
+actual <- character16s$ADG
+predicted <- predict(fit, newdata = character16s)  
+# Calculate RMSE
+rmse <- sqrt(mean((actual - predicted)^2))
+rmse
+
+AF<- read.csv(here(path_data, "AF.csv"),row.names = 1,header = T)
+AF <- drop_na(AF)
+# Perform ANOVA
+fit <- aov(AFW ~ Group, data = AF)
+summary(fit)
+# Install and load emmeans package
+#install.packages("emmeans")
+#library(emmeans)
+# Calculate LSM
+emm <- emmeans(fit, pairwise ~ Group)
+summary(emm)
+# Get standard error of LSM
+emm_se <- summary(emm)$contrasts[, "SE"]
+# Assume actual is observed value, predicted is predicted value
+actual <- AF$SFW
+predicted <- predict(fit, newdata = AF) 
+# Calculate RMSE
+rmse <- sqrt(mean((actual - predicted)^2))
+rmse
+
+# Perform ANOVA
+fit <- aov(SFW ~ Group, data = AF)
+summary(fit)
+# Install and load emmeans package
+#install.packages("emmeans")
+#library(emmeans)
+# Calculate LSM
+emm <- emmeans(fit, pairwise ~ Group)
+summary(emm)
+# Get standard error of LSM
+emm_se <- summary(emm)$contrasts[, "SE"]
+# Assume actual is observed value, predicted is predicted value
+actual <- AF$SFW
+predicted <- predict(fit, newdata = AF)  
+# Calculate RMSE
+rmse <- sqrt(mean((actual - predicted)^2))
+rmse
+
+# Perform ANOVA
+fit <- aov(AFP ~ Group, data = AF)
+summary(fit)
+# Install and load emmeans package
+# Calculate LSM
+emm <- emmeans(fit, pairwise ~ Group)
+summary(emm)
+# Get standard error of LSM
+emm_se <- summary(emm)$contrasts[, "SE"]
+# Assume actual is observed value, predicted is predicted value
+actual <- AF$AFP
+actual <- as.numeric(actual)
+predicted <- predict(fit, newdata = AF)  
+# Calculate RMSE
+rmse <- sqrt(mean((actual - predicted)^2))
+rmse
+
+# Perform ANOVA
+fit <- aov(SFP ~ Group, data = AF)
+summary(fit)
+# Install and load emmeans package
+#install.packages("emmeans")
+#library(emmeans)
+# Calculate LSM
+emm <- emmeans(fit, pairwise ~ Group)
+summary(emm)
+# Get standard error of LSM
+emm_se <- summary(emm)$contrasts[, "SE"]
+# Assume actual is observed value, predicted is predicted value
+actual <- AF$SFP
+actual <- as.numeric(actual)
+predicted <- predict(fit, newdata = AF)  
+# Calculate RMSE
+rmse <- sqrt(mean((actual - predicted)^2))
+rmse
+```
+
+
+
+### FCR ADG  16s
+
+```{r }
+# 1. 16s ADG plotting
+#ADG_16s <- character16s[, c(1, 4)]
+ADG_16s <- character16s[,c("Group","ADG")]
+#ADG_16s_40 <- ADG_16s %>% dplyr::filter(ADG >= 40)
+
+plot_unified <- function(data, y_var, y_label) {
+  # Ensure Group is factor and maintain original order
+  data$Group <- factor(data$Group)
+  
+  # Get and reverse ggplot default colors (key modification)
+  group_levels <- levels(data$Group)
+  default_colors <- scales::hue_pal()(length(group_levels))
+  reversed_colors <- rev(default_colors)
+  names(reversed_colors) <- group_levels
+  
+  # Calculate y-axis maximum
+  y_max <- max(data[[y_var]], na.rm = TRUE)
+  
+  ggplot(data, aes(x = Group, y = .data[[y_var]])) +
+    # Boxplot (using reversed fill colors)
+    geom_boxplot(
+      aes(fill = Group),  # Specify fill separately
+      alpha = 0.5,
+      outlier.shape = 21,
+      outlier.size = 2
+    ) +
+    # Points (using reversed point colors)
+    geom_jitter(
+      aes(color = Group),  #
+      width = 0.2,
+      height = 0,
+      size = 2,
+      alpha = 0.7
+    ) +
+    # Apply reversed color scheme
+    scale_fill_manual(values = reversed_colors) +
+    scale_color_manual(values = reversed_colors) +
+    # Significance testing
+    geom_signif(
+      comparisons = list(levels(data$Group)),
+      map_signif_level = function(p) "***",
+      y_position = y_max * 1.1,
+      tip_length = 0,
+      textsize = 18,
+      size = 1.5
+    ) +
+    scale_y_continuous(limits = c(NA, y_max * 1.2)) +
+    theme_bw() +
+    labs(x = "", y = y_label) +
+    theme(
+      axis.title = element_text(size = 50),
+      axis.text = element_text(size = 45),
+      legend.position = "none"
+    )
+}
+# Assume dataset named ADG_16s_40 contains Group, ADG columns
+p_adg <- plot_unified(ADG_16s, "ADG", "ADG (g/d)")
+
+
+# 2. 16s FCR plotting
+
+FCR_16S <- character16s[, c("Group","FCR")]
+plot_unified <- function(data, y_var, y_label) {
+  # Ensure Group is factor and maintain original order
+  data$Group <- factor(data$Group)
+  
+  # Get and reverse ggplot default colors (key modification)
+  group_levels <- levels(data$Group)
+  default_colors <- scales::hue_pal()(length(group_levels))
+  reversed_colors <- rev(default_colors)
+  names(reversed_colors) <- group_levels
+  
+  # Calculate y-axis maximum
+  y_max <- max(data[[y_var]], na.rm = TRUE)
+  
+  ggplot(data, aes(x = Group, y = .data[[y_var]])) +
+    # Boxplot (using reversed fill colors)
+    geom_boxplot(
+      aes(fill = Group),  
+      alpha = 0.5,
+      outlier.shape = 21, 
+      outlier.size = 2
+    ) +
+    geom_jitter(
+      aes(color = Group),  
+      width = 0.2,
+      height = 0,
+      size = 2,
+      alpha = 0.7
+    ) +
+    # Apply reversed color scheme
+    scale_fill_manual(values = reversed_colors) +
+    scale_color_manual(values = reversed_colors) +
+    # Significance testing
+    geom_signif(
+      comparisons = list(levels(data$Group)),
+      map_signif_level = function(p) "****",
+      y_position = y_max * 1.1,
+      tip_length = 0,
+      textsize = 18,
+      size = 1.5
+    ) +
+    scale_y_continuous(limits = c(NA, y_max * 1.2)) +
+    theme_bw() +
+    labs(x = "", y = y_label) +
+    theme(
+      axis.title = element_text(size = 50),
+      axis.text = element_text(size = 45),
+      legend.position = "none"
+    )
+}
+
+p_fcr <- plot_unified(FCR_16S, "FCR", "FCR")
+# Combine plots
+combined_plot <- p_adg + p_fcr +
+  plot_annotation(tag_levels = 'A') &
+  theme(plot.tag = element_text(size = 45, face = "bold"))
+
+# Save combined plot
+ggsave(path_target("FCR+ADG16s.pdf"), combined_plot, width = 14, height = 8)
+ggsave(path_target("FCR+ADG16s.png"), combined_plot, width = 14, height = 8)
+```
+
+### acid
+
+```{r }
+acid <- read.csv(here(path_raw, "d61-spearman/acid.csv"),header = T)
+# Convert to long format
+lacid <- pivot_longer(acid, 
+                     cols = -molecule, # Exclude molecule and Group columns
+                     names_to = "Group", # New column name for original column names
+                     values_to = "Sampleconcentration") # New column name for original values
+lacid$Group <- substring(lacid$Group,1,2)
+
+# Filter for each acid type
+Butyric <- lacid[lacid$molecule == "Butyric acid",]
+pro <- lacid[lacid$molecule == "Propionic acid",]
+Acetic <- lacid[lacid$molecule == "Acetic acid",]
+No <- lacid[lacid$molecule == "Nonanoic acid",]
+Hex <- lacid[lacid$molecule == "Hexanoic acid",]
+Hep <- lacid[lacid$molecule == "Heptanoic acid",]
+Isob <- lacid[lacid$molecule == "Isobutyric acid",]
+Isov <- lacid[lacid$molecule == "Isovaleric acid",]
+val <- lacid[lacid$molecule == "Valeric acid",]
+De <- lacid[lacid$molecule == "Decanoic acid",]
+
+# 1 Butyric acid
+t_test_buty <- t.test(Sampleconcentration ~ Group, data = Butyric, var.equal = TRUE, alternative = "less")
+print(t_test_buty)
+# p-value = 0.04748
+
+# 2 Propionic acid
+t_test_result <- t.test(Sampleconcentration ~ Group, data = pro, var.equal = TRUE, alternative = "less")
+print(t_test_result)
+# p-value = 0.03337
+
+# 3 Valeric acid
+t_test_result <- t.test(Sampleconcentration ~ Group, data = val, var.equal = TRUE, alternative = "less")
+print(t_test_result)
+# p-value = 0.08838
+
+# 4 Hexanoic acid
+t_test_result <- t.test(Sampleconcentration ~ Group, data = Hex, var.equal = TRUE, alternative = "less")
+print(t_test_result)
+# p-value = 0.5076
+
+# 5 Isovaleric acid
+t_test_result <- t.test(Sampleconcentration ~ Group, data = Isov, var.equal = TRUE, alternative = "less")
+print(t_test_result)
+# p-value = 0.3487
+
+# 6 Isobutyric acid
+t_test_result <- t.test(Sampleconcentration ~ Group, data = Isob, var.equal = TRUE, alternative = "less")
+print(t_test_result)
+# p-value = 0.3065
+
+# 7 Heptanoic acid
+t_test_result <- t.test(Sampleconcentration ~ Group, data = Hep, var.equal = TRUE, alternative = "less")
+print(t_test_result)
+# p-value = 0.8342
+
+# 8 Decanoic acid
+t_test_result <- t.test(Sampleconcentration ~ Group, data = De, var.equal = TRUE, alternative = "less")
+print(t_test_result)
+# p-value = 0.8801
+
+# 9 Nonanoic acid
+t_test_result <- t.test(Sampleconcentration ~ Group, data = No, var.equal = TRUE, alternative = "less")
+print(t_test_result)
+# p-value = 0.8982
+
+# Acetic acid
+t_test_result <- t.test(Sampleconcentration ~ Group, data = Acetic, var.equal = TRUE, alternative = "less")
+print(t_test_result)
+# p-value = 0.7216
+```
+
+
+```{r }
+# Custom function:
+create_acid_plot <- function(data, y_label, y_position, annotation) {
+  # Get and reverse ggplot default colors
+  group_levels <- levels(factor(data$Group))
+  default_colors <- scales::hue_pal()(length(group_levels))
+  reversed_colors <- rev(default_colors)
+  names(reversed_colors) <- group_levels
+  
+  ggplot(data, aes(x = Group, y = Sampleconcentration)) +
+    geom_boxplot(
+      aes(fill = Group), 
+      alpha = 0.5,
+      outlier.shape = 21,
+      outlier.size = 2
+    ) +
+    geom_jitter(
+      aes(color = Group),
+      width = 0.2,
+      height = 0,
+      size = 2,
+      alpha = 0.7
+    ) +
+    scale_fill_manual(values = reversed_colors) +
+    scale_color_manual(values = reversed_colors) +
+    geom_signif(
+      annotations = annotation,
+      y_position = y_position,
+      xmin = 1.1,
+      xmax = 1.9,
+      tip_length = 0,
+      color = "black",
+      textsize = 10
+    ) +
+    theme_bw() +
+    labs(x = "", y = y_label) +
+    theme(
+      axis.title = element_text(size = 45),
+      axis.text = element_text(size = 40),
+      plot.title = element_text(size = 40, hjust = 0.5, face = "bold"),
+      legend.title = element_text(size = 40, hjust = 0.5),
+      legend.text = element_text(size = 40),
+      plot.margin = unit(c(0.5, 0.5, 0.5, 0.5), "cm"),
+      legend.position = "none"
+    )
+}
+
+# 1. Butyric acid
+p.box1 <- create_acid_plot(Butyric, "Butyric acid (μg/mg)", 650, "*")
+
+# 2. Propionic acid 
+p.box2 <- create_acid_plot(pro, "Propionic acid (μg/mg)", 900, "*")
+
+# 3. Valeric acid
+p.box3 <- create_acid_plot(val, "Valeric acid (μg/mg)", 200, "NS")
+
+# 4. Hexanoic acid
+p.box4 <- create_acid_plot(Hex, "Hexanoic acid (μg/mg)", 3.5, "NS")
+
+# 5. Isovaleric acid
+p.box5 <- create_acid_plot(Isov, "Isovaleric acid (μg/mg)", 120, "NS")
+
+# 6. Isobutyric acid
+p.box6 <- create_acid_plot(Isob, "Isobutyric acid (μg/mg)", 100, "NS")
+
+# 7. Heptanoic acid
+p.box7 <- create_acid_plot(Hep, "Heptanoic acid (μg/mg)", 0.45, "NS")
+
+# 8. Decanoic acid
+p.box8 <- create_acid_plot(De, "Decanoic acid (μg/mg)", 5.9, "NS")
+
+# 9. Nonanoic acid
+p.box9 <- create_acid_plot(No, "Nonanoic acid (μg/mg)", 1.8, "NS")
+
+# 10. Acetic acid
+p.box10 <- create_acid_plot(Acetic, "Acetic acid (μg/mg)", 2000, "NS")
+
+# Combine plots
+# Combine 2 significant plots
+combined_2 <- p.box2 + p.box1
+ggsave(path_target("pro_buty.pdf"), combined_2, width = 16, height = 8)
+ggsave(path_target("pro_buty.png"), combined_2, width = 16, height = 8)
+
+# Create plot layout
+combined_plot <- grid.arrange(p.box10, p.box6, p.box3, p.box5,
+                             p.box4, p.box7, p.box9, p.box8,
+                             nrow = 2)
+# Save
+ggsave(path_target("acid8.pdf"), combined_plot, width = 32, height = 16)
+ggsave(path_target("acid8.png"), combined_plot, width = 32, height = 16)
+```
+
+## Files written
+
+These files have been written to the target directory, `r paste0("data/", params$name)`:
+
+```{r list-files-target}
+projthis::proj_dir_info(path_target(), tz = "CET")
+```
+
