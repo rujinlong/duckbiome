@@ -1,0 +1,4 @@
+docker build -f Dockerfile_base --progress=plain -t duckbiome_base .
+docker build -f Dockerfile --progress=plain -t duckbiome:latest .
+docker run -p 80:80 duckbiome:latest
+# then go to 127.0.0.1:80
