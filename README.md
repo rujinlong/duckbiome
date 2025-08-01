@@ -3,27 +3,39 @@
 
 <!-- badges: start -->
 
+[![License](https://img.shields.io/badge/license-GPL%20%28%3E%3D%203%29-blue)](https://www.gnu.org/licenses/gpl-3.0.en.html)
+[![Docker
+Image](https://img.shields.io/docker/pulls/jinlongru/duckbiome?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/jinlongru/duckbiome)
+[![R-package](https://img.shields.io/github/r-package/v/rujinlong/duckbiome)](https://github.com/rujinlong/duckbiome)
 <!-- badges: end -->
 
 This repository contains the complete analysis code used in the
 manuscript: “**Bacteria and bacteriophage consortia modulate cecal SCFA
 production and host metabolism to enhance feed efficiency in ducks**”.
 
-This study employs a multi-omics approach—integrating 16S amplicon
+This study employs a multi-omics approach, integrating 16S amplicon
 sequencing, shotgun metagenomics, viromics, liver transcriptomics, and
-serum metabolomics—to investigate how gut microbial communities
+serum metabolomics, to investigate how gut microbial communities
 (bacteria and phages) influence feed efficiency (FE) in ducks. We
 identify key microbial taxa, functional pathways, and phage-encoded
 auxiliary metabolic genes (AMGs) that correlate with high FE, providing
 novel insights into host-microbiome interactions in poultry.
 
-# Dockererized Rstudio server for reproducibility
+### Dockererized Rstudio for reproducibility
 
 The dockerfile is in the `docker` folder. A pre-built docker image is
 pushed to Docker Hub. Users can pull the image and run the Rstudio
 server locally.
 
 ``` sh
-docker pull jinlongru/duckbiome
-docker run -p 80:80 jinlongru/duckbiome
+# pull the docker image (optional)
+docker pull jinlongru/duckbiome:latest
+
+# run the docker image (bind `data` folder to /home/rstudio/analyses/data)
+docker run -d -p 8787:8787 -e USER=rstudio -e PASSWORD=rstudio -e ROOT=TRUE -v $(pwd)/data:/home/rstudio/analyses/data jinlongru/duckbiome:latest
 ```
+
+Then you can access the Rstudio server at <http://localhost:8787>
+
+- username: rstudio
+- password: rstudio

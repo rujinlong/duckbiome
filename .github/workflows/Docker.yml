@@ -14,10 +14,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - dockerfile: ./docker/Dockerfile_base
-            image: jinlongru/duckbiome_base
-          # - dockerfile: ./docker/Dockerfile
-          #   image: jinlongru/duckbiome
+          # - dockerfile: ./docker/Dockerfile_base
+          #   image: jinlongru/duckbiome_base
+          - dockerfile: ./docker/Dockerfile
+            image: jinlongru/duckbiome
     permissions:
       contents: read
       packages: write

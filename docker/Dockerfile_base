@@ -1,8 +1,9 @@
 FROM rocker/rstudio:4.5.1
-RUN apt-get update -y && apt-get install -y  libcurl4-openssl-dev libssl-dev libpng-dev make zlib1g-dev git libicu-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -y && apt-get install -y  libcurl4-openssl-dev libssl-dev libpng-dev make zlib1g-dev git libicu-dev libxml2-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev 
+RUN apt-get install -y libfreetype6-dev libpng-dev libtiff5-dev libjpeg-dev
+RUN rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /usr/local/lib/R/etc/ /usr/lib/R/etc/
 RUN echo "options(renv.config.pak.enabled = FALSE, repos = c(CRAN = 'https://cran.rstudio.com/'), download.file.method = 'libcurl', Ncpus = 4)" | tee /usr/local/lib/R/etc/Rprofile.site | tee /usr/lib/R/etc/Rprofile.site
-RUN R -e 'install.packages("remotes")'
-RUN R -e 'remotes::install_version("renv", version = "1.0.3")'
-COPY ./docker/renv.lock.prod renv.lock
-RUN --mount=type=cache,id=renv-cache,target=/root/.cache/R/renv R -e 'renv::restore()'
+RUN R -e 'install.packages(c("remotes", "renv", "BiocManager", "devtools"))'
+RUN R -e 'BiocManager::install(c("rujinlong/projthis@3b5f80f", "tidyverse", "conflicted", "openxlsx"))'
+EXPOSE 8087
