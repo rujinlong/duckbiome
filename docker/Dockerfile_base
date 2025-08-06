@@ -1,5 +1,5 @@
 FROM rocker/rstudio:4.5.1
-RUN apt-get update -y && apt-get install -y  libcurl4-openssl-dev libssl-dev libpng-dev make zlib1g-dev git libicu-dev libxml2-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev 
+RUN apt-get update -y && apt-get install -y  libcurl4-openssl-dev libssl-dev libpng-dev make zlib1g-dev git libicu-dev libxml2-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev
 RUN apt-get install -y libfreetype6-dev libpng-dev libtiff5-dev libjpeg-dev
 RUN rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /usr/local/lib/R/etc/ /usr/lib/R/etc/
