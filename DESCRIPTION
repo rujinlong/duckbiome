@@ -1,6 +1,6 @@
 Package: duckbiome
 Title: An R package for project duckBiome
-Version: 0.0.1
+Version: 0.2
 Authors@R: 
     person("Jinlong", "Ru", , "jinlong.ru@gmail.com", role = c("aut", "cre"))
 Description: This is the package and code for project duckbiome.
@@ -8,22 +8,74 @@ License: GPL (>= 3)
 URL: https://github.com/rujinlong/duckbiome
 BugReports: https://github.com/rujinlong/duckbiome/issues
 Imports: 
+    ANCOMBC,
+    attachment,
+    base,
+    clusterProfiler,
     config,
+    conflicted,
+    cowplot,
     data.table,
     DBI,
+    DESeq2,
+    devtools,
     dplyr,
+    DT,
+    emmeans,
+    EnhancedVolcano,
+    enrichplot,
+    ggcorrplot,
+    ggprism,
+    ggpubr,
+    ggrepel,
+    ggsci,
+    ggsignif,
+    ggthemes,
     golem,
+    gridExtra,
     here,
+    Hmisc,
+    httpuv,
+    igraph,
     KEGGREST,
+    knitr,
+    lme4,
+    Maaslin2,
     magrittr,
+    mia,
+    microbiome,
+    NetCoMi,
+    openxlsx,
+    org.Hs.eg.db,
+    patchwork,
+    pheatmap,
+    phyloseq,
+    picante,
+    RColorBrewer,
+    reshape2,
+    rmarkdown,
     RSQLite,
+    rstudioapi,
+    sass,
+    scales,
+    scater,
     shiny,
+    SingleCellExperiment,
+    stringi,
     stringr,
     tibble,
-    tidyr
+    tidyr,
+    tidyverse,
+    TreeSummarizedExperiment,
+    usethis,
+    vegan,
+    viridis
 VignetteBuilder: 
     knitr
 Config/testthat/edition: 3
 Encoding: UTF-8
 LazyData: true
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
+Remotes:  
+    stefpeschel/NetCoMi,
+    rujinlong/projthis@7e2839f

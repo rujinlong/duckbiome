@@ -8,6 +8,7 @@ inst/doc
 /doc/
 /Meta/
 analyses/data
+analyses/tmp
 analyses/*.sqlite
 tian/data
 tian

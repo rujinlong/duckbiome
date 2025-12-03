@@ -132,6 +132,17 @@ tse <- TreeSummarizedExperiment(
 )
 
 saveRDS(tse, file = path_target("tse_MAG.rds"))
+
+
+DBI::dbWriteTable(con, "MAG_abundance_count", mat_count, overwrite = TRUE, row.names = FALSE)
+DBI::dbWriteTable(con, "MAG_abundance_rpkm", mat_rpkm, overwrite = TRUE, row.names = FALSE)
+DBI::dbWriteTable(con, "MAG_abundance_tpm", mat_tpm, overwrite = TRUE, row.names = FALSE)
+DBI::dbWriteTable(con, "MAG_abundance_covfrac", mat_covfrac, overwrite = TRUE, row.names = FALSE)
+DBI::dbWriteTable(con, "MAG_abundance_tmm", mat_tmm, overwrite = TRUE, row.names = FALSE)
+```
+
+```{r}
+# tse1 <- readRDS(path_target("tse_MAG.rds"))
 ```
 
 ## Files written

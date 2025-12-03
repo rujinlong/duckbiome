@@ -10,8 +10,11 @@ Image](https://img.shields.io/docker/pulls/jinlongru/duckbiome?label=Docker%20Hu
 <!-- badges: end -->
 
 This repository contains the complete analysis code used in the
-manuscript: “**Bacteria and bacteriophage consortia modulate cecal SCFA
-production and host metabolism to enhance feed efficiency in ducks**”.
+manuscript: “**Bacteria and phage consortia modulate cecal SCFA production and host metabolism to enhance feed efficiency in ducks**”.
+
+**Citation:**
+
+> Wang, X., Tian, S., Zhang, Y. et al. Bacteria and phage consortia modulate cecal SCFA production and host metabolism to enhance feed efficiency in ducks. Microbiome (2026). https://doi.org/10.1186/s40168-026-02368-y
 
 This study employs a multi-omics approach, integrating 16S amplicon
 sequencing, shotgun metagenomics, viromics, liver transcriptomics, and

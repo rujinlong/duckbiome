@@ -156,7 +156,6 @@ ggplot(keggp, aes(x = GeneRatio,
                         breaks = pretty_breaks(4)) +
   scale_color_gradientn(name = "pvalue",
                         colors = c("#FF0000", "#3FA0C0"),
-                        
                         values = scales::rescale(c(min(-log10(keggp$pvalue)), 
                                                    median(-log10(keggp$pvalue)), 
                                                  max(-log10(keggp$pvalue))))) +
@@ -185,7 +184,7 @@ ggsave(path_target("keggp17_new.png"),width = 17,height = 17)
 ```
 
 
-### ancombca
+### ancombc
 
 ```{r ancombc}
 # Import data
