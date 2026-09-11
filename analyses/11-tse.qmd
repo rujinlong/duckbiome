@@ -60,7 +60,7 @@ suppressPackageStartupMessages({
   devtools::load_all()
 })
 
-con <- load_db()
+con <- qproj::proj_db_connect()
 ```
 
 ## Tasks

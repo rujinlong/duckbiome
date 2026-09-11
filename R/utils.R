@@ -1,9 +1,3 @@
-load_db <- function() {
-  con <- DBI::dbConnect(RSQLite::SQLite(), here::here("pc028e1e2.sqlite"))
-  return(con)
-}
-
-
 add_binID <- function(df_binID2alias, df_annotation) {
   df_annotation %>%
     dplyr::mutate(bin_alias = str_replace(prot_id, "_.*", "")) %>%
