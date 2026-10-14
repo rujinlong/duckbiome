@@ -25,6 +25,13 @@ params:
 
 The purpose of this document is ...
 
+```{r}
+#| label: params
+#| eval: !expr interactive()
+#| include: false
+params <- list(name = "62-FCR")
+```
+
 ```{r setup}
 #| message: false
 #| include: false
@@ -33,7 +40,6 @@ wd <- "analyses"
 if (basename(getwd()) != wd) {
   setwd(here::here(wd))
 }
-params <- list(name = "62-FCR")
 here::i_am(paste0(params$name, ".qmd"), uuid = "f284e8ac-afae-4368-a25c-8528e886d751")
 projthis::proj_create_dir_target(params$name, clean = FALSE)
 path_target <- projthis::proj_path_target(params$name)
@@ -58,7 +64,6 @@ suppressPackageStartupMessages({
   library(emmeans)
   library(gridExtra)
   library(patchwork)
-  devtools::load_all()
 })
 ```
 
