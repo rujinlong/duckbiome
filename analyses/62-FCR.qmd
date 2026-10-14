@@ -339,17 +339,15 @@ plot_unified <- function(data, y_var, y_label) {
     # Boxplot (using reversed fill colors)
     geom_boxplot(
       aes(fill = Group),  # Specify fill separately
-      alpha = 0.5,
-      outlier.shape = 21,
-      outlier.size = 2
+      alpha = 0.3,
+      outlier.shape = NA
     ) +
-    # Points (using reversed point colors)
-    geom_jitter(
-      aes(color = Group),  #
-      width = 0.2,
-      height = 0,
-      size = 2,
-      alpha = 0.7
+    # Individual birds as translucent points over the box, so the summary layer stays readable
+    geom_point(
+      aes(color = Group),
+      position = position_jitter(width = 0.2, height = 0, seed = 62),
+      size = 1.6,
+      alpha = 0.35
     ) +
     # Apply reversed color scheme
     scale_fill_manual(values = reversed_colors) +
@@ -357,7 +355,7 @@ plot_unified <- function(data, y_var, y_label) {
     # Significance testing
     geom_signif(
       comparisons = list(levels(data$Group)),
-      map_signif_level = function(p) "***",
+      map_signif_level = c("****" = 1e-4, "***" = 0.001, "**" = 0.01, "*" = 0.05),
       y_position = y_max * 1.1,
       tip_length = 0,
       textsize = 18,
@@ -396,16 +394,15 @@ plot_unified <- function(data, y_var, y_label) {
     # Boxplot (using reversed fill colors)
     geom_boxplot(
       aes(fill = Group),  
-      alpha = 0.5,
-      outlier.shape = 21, 
-      outlier.size = 2
+      alpha = 0.3,
+      outlier.shape = NA
     ) +
-    geom_jitter(
-      aes(color = Group),  
-      width = 0.2,
-      height = 0,
-      size = 2,
-      alpha = 0.7
+    # Individual birds as translucent points over the box, so the summary layer stays readable
+    geom_point(
+      aes(color = Group),
+      position = position_jitter(width = 0.2, height = 0, seed = 62),
+      size = 1.6,
+      alpha = 0.35
     ) +
     # Apply reversed color scheme
     scale_fill_manual(values = reversed_colors) +
@@ -413,7 +410,7 @@ plot_unified <- function(data, y_var, y_label) {
     # Significance testing
     geom_signif(
       comparisons = list(levels(data$Group)),
-      map_signif_level = function(p) "****",
+      map_signif_level = c("****" = 1e-4, "***" = 0.001, "**" = 0.01, "*" = 0.05),
       y_position = y_max * 1.1,
       tip_length = 0,
       textsize = 18,
